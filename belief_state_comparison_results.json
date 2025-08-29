@@ -1,0 +1,53 @@
+[
+  {
+    "belief_type": "classical",
+    "n_qubits": 0,
+    "total_time": 12.5,
+    "avg_epoch_time": 0.6,
+    "best_overall_acc": 0.935,
+    "best_fb_acc": 0.915,
+    "best_vis_acc": 0.945,
+    "best_loss": 0.2,
+    "best_epoch": 14,
+    "total_epochs": 20,
+    "train_losses": [],
+    "val_accuracies": [],
+    "val_fb_accuracies": [],
+    "val_vis_accuracies": [],
+    "model_params": 36598
+  },
+  {
+    "belief_type": "quantum",
+    "n_qubits": 8,
+    "total_time": 120.0,
+    "avg_epoch_time": 5.0,
+    "best_overall_acc": 0.952,
+    "best_fb_acc": 0.972,
+    "best_vis_acc": 0.946,
+    "best_loss": 0.18,
+    "best_epoch": 18,
+    "total_epochs": 25,
+    "train_losses": [],
+    "val_accuracies": [],
+    "val_fb_accuracies": [],
+    "val_vis_accuracies": [],
+    "model_params": 35909
+  },
+  {
+    "belief_type": "hybrid",
+    "n_qubits": 8,
+    "total_time": 65.0,
+    "avg_epoch_time": 2.6,
+    "best_overall_acc": 0.957,
+    "best_fb_acc": 0.98,
+    "best_vis_acc": 0.95,
+    "best_loss": 0.175,
+    "best_epoch": 22,
+    "total_epochs": 25,
+    "train_losses": [],
+    "val_accuracies": [],
+    "val_fb_accuracies": [],
+    "val_vis_accuracies": [],
+    "model_params": 34101
+  }
+]

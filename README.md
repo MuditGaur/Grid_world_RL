@@ -1,14 +1,14 @@
 # Quantum Theory of Mind Reinforcement Learning
 
-A research framework for comparing **Classical**, **Quantum**, and **Hybrid** state representations in Theory of Mind (ToM) style observers for gridworld POMDP tasks with false-belief scenarios.
+A research framework for comparing **Classical**, **Quantum**, and **Hybrid** belief state representations in Theory of Mind (ToM) style observers for gridworld POMDP tasks with false-belief scenarios.
 
 ## Overview
 
-This project implements a ToM-style observer that predicts an acting agent's next action in gridworld environments with occasional hidden object swaps. The observer uses different state encoding approaches:
+This project implements a ToM-style observer that predicts an acting agent's next action in gridworld environments with occasional hidden object swaps. The observer uses different belief state representations while maintaining the same state space:
 
-- **ClassicalToM**: Traditional PyTorch neural networks
-- **QuantumToM**: Variational quantum circuits (VQC) for state encoding
-- **HybridToM**: Combination of classical and quantum state embeddings
+- **Classical Belief State**: Traditional neural network belief representation
+- **Quantum Belief State**: Quantum circuit belief representation
+- **Hybrid Belief State**: Combination of classical and quantum belief representations
 
 The framework evaluates prediction accuracy, particularly around **false-belief** situations where object swaps occur outside the actor's field of view.
 
@@ -19,6 +19,7 @@ The framework evaluates prediction accuracy, particularly around **false-belief*
 - **Quantum Integration**: PennyLane-based variational quantum circuits
 - **False-Belief Evaluation**: Specialized metrics for ToM-like inference scenarios
 - **Modular Design**: Clean separation of environment, agents, models, and training
+ - **State Encoder Comparison**: Compare classical/quantum/hybrid state encoders with belief fixed to classical
 
 ## Installation
 
@@ -45,6 +46,48 @@ python main.py --episodes 600 --val-episodes 200 --epochs 8 \
     --use-qlearn-agents --qlearn-iters 20000
 ```
 
+### Comparison Experiments (Plots + JSON)
+
+Belief state comparison (classical vs quantum vs hybrid belief):
+
+```bash
+# Full run (training)
+python belief_state_comparison_experiment.py --qubits 8 --episodes 150 --max-epochs 20 --patience 5 \
+  --save-results belief_state_comparison_results.json --save-plots belief_state_comparison_plots.png
+
+# Fast (no training; uses fixed precomputed metrics)
+python belief_state_comparison_experiment.py --use-fixed-results \
+  --save-results belief_state_comparison_results.json --save-plots belief_state_comparison_plots.png
+```
+
+State encoder comparison (classical vs quantum vs hybrid state encoders; belief fixed classical):
+
+```bash
+# Full run (training)
+python state_encoder_comparison_experiment.py --qubits 8 --episodes 150 --max-epochs 20 --patience 5 \
+  --save-results state_encoder_comparison_results.json --save-plots state_encoder_comparison_plots.png
+
+# Use agent partial observation as model input (instead of 17D observer state)
+python state_encoder_comparison_experiment.py --agent-obs-input --qubits 8 --episodes 150 --max-epochs 20 --patience 5 \
+  --save-results state_encoder_comparison_results.json --save-plots state_encoder_comparison_plots.png
+
+# Fast (no training; uses fixed precomputed metrics)
+python state_encoder_comparison_experiment.py --use-fixed-results \
+  --save-results state_encoder_comparison_results.json --save-plots state_encoder_comparison_plots.png
+```
+
+Re-plot final comparison from saved JSON (no training):
+
+```bash
+python examples/comparison_plot.py --use-fixed-results --fixed-results-file final_comparison.json --output final_comparison.png
+```
+
+Headless plotting tip (Windows PowerShell):
+
+```powershell
+$env:MPLBACKEND='Agg'; python <your-command-here>
+```
+
 ## Project Structure
 
 ```
@@ -63,6 +106,7 @@ quantum-tom-rl/
 │   │   └── qlearn_agent.py  # Q-learning agent
 │   ├── models/
 │   │   ├── __init__.py
+│   │   ├── belief_states.py  # Belief state representations
 │   │   ├── quantum_layer.py # Quantum encoder implementation
 │   │   └── tom_observer.py  # ToM observer models
 │   ├── data/
@@ -104,19 +148,22 @@ train_samples, val_samples = build_rollouts(
 )
 
 # Create and train model
-model = ToMObserver(mode="hybrid", n_qubits=8)
+model = ToMObserver(belief_type="hybrid", n_qubits=8)
 # ... training loop
 ```
 
-### Quantum Model Configuration
+### Belief State Model Configuration
 ```python
 from src.models import ToMObserver
 
-# Quantum-only model
-quantum_model = ToMObserver(mode="quantum", n_qubits=12)
+# Classical belief state model
+classical_model = ToMObserver(belief_type="classical")
 
-# Hybrid model (classical + quantum)
-hybrid_model = ToMObserver(mode="hybrid", n_qubits=8)
+# Quantum belief state model
+quantum_model = ToMObserver(belief_type="quantum", n_qubits=12)
+
+# Hybrid belief state model (classical + quantum)
+hybrid_model = ToMObserver(belief_type="hybrid", n_qubits=8)
 ```
 
 ## Command Line Arguments
@@ -128,7 +175,7 @@ hybrid_model = ToMObserver(mode="hybrid", n_qubits=8)
 | `--fov` | Field of view | 3 |
 | `--episodes` | Episodes per agent | 400 |
 | `--val-episodes` | Validation episodes | 120 |
-| `--model` | Model type (classical/quantum/hybrid/all) | all |
+| `--belief-type` | Belief state type (classical/quantum/hybrid) | classical |
 | `--n-qubits` | Number of qubits for quantum models | 8 |
 | `--epochs` | Training epochs | 6 |
 | `--lr` | Learning rate | 3e-4 |
@@ -176,31 +223,39 @@ The experiments are conducted in a **9×9 gridworld** with the following key par
 
 ### Model Architectures
 
-#### ClassicalToM
+All models use the same state space (17-dimensional features) but differ in their belief state representations:
+
+#### Classical Belief State
 - **Character Encoder**: MLP (24→64→32)
 - **Mental Encoder**: MLP (17→64→32)  
-- **State Encoder**: MLP (17→64→32)
-- **Policy Head**: MLP (96→128→64→5)
-- **Total Parameters**: ~15,000
+- **Belief State**: Classical Neural Network
+  - **Belief Encoder**: MLP (17→128→64) with Tanh activation
+  - **Belief Decoder**: MLP (64→128→17) for belief reconstruction
+  - **Belief Update**: MLP (64+17→128→64) for belief evolution
+- **Policy Head**: MLP (128→128→64→5)
+- **Total Parameters**: ~25,000
 
-#### QuantumToM
+#### Quantum Belief State
 - **Character Encoder**: MLP (24→64→32)
 - **Mental Encoder**: MLP (17→64→32)
-- **State Encoder**: Variational Quantum Circuit
-  - **Qubits**: 8-12 qubits
-  - **Layers**: 2 StronglyEntanglingLayers
-  - **Embedding**: Angle encoding of projected features
-  - **Measurement**: Pauli-Z expectation values
+- **Belief State**: Quantum Variational Circuit
+  - **State Projection**: Linear (17→n_qubits)
+  - **Quantum Circuit**: Angle embedding + StronglyEntanglingLayers
+  - **Post-processing**: MLP (n_qubits→64→32) with Tanh activation
+  - **Belief Update**: MLP (32+17→64→32) for belief evolution
 - **Policy Head**: MLP (96→128→64→5)
-- **Total Parameters**: ~15,000 + quantum parameters
+- **Total Parameters**: ~20,000 + quantum parameters
 
-#### HybridToM
+#### Hybrid Belief State
 - **Character Encoder**: MLP (24→64→32)
 - **Mental Encoder**: MLP (17→64→32)
-- **State Encoder**: Classical MLP (17→64→32) + Quantum VQC (8 qubits)
-- **Fusion**: Concatenated classical (32) + quantum (16) features
-- **Policy Head**: MLP (112→128→64→5)
-- **Total Parameters**: ~18,000 + quantum parameters
+- **Belief State**: Classical + Quantum Fusion
+  - **Classical Component**: Classical belief state (32-dim)
+  - **Quantum Component**: Quantum belief state (32-dim)
+  - **Fusion Layer**: MLP (64→64→64) combining both beliefs
+  - **Belief Update**: MLP (64+17→64→64) for belief evolution
+- **Policy Head**: MLP (128→128→64→5)
+- **Total Parameters**: ~35,000 + quantum parameters
 
 ### Training Configuration
 
@@ -403,8 +458,15 @@ The scaling analysis generates several comprehensive visualizations:
 - **`hybrid_analysis.py`**: Comprehensive analysis and visualization of hybrid vs quantum results
 - **`analyze_scaling_results.py`**: Analysis of quantum scaling results with detailed metrics
 
-### Running Scaling Experiments
+### Running Experiments
 
+#### Belief State Comparison (Recommended)
+```bash
+# Compare all belief state types
+python belief_state_comparison_experiment.py --qubits 8 --episodes 150 --max-epochs 20
+```
+
+#### Individual Scaling Experiments
 ```bash
 # Run hybrid scaling experiments
 python hybrid_scaling_experiment.py --qubits 2,4,6,8 --episodes 150 --max-epochs 25 --patience 7
@@ -412,6 +474,12 @@ python hybrid_scaling_experiment.py --qubits 2,4,6,8 --episodes 150 --max-epochs
 # Run quantum scaling experiments  
 python qubit_scaling_experiment.py --qubits 2,4,6,8,10,12 --episodes 200 --max-epochs 20 --patience 5
 
+# Run classical baseline
+python classical_baseline_experiment.py --episodes 150 --epochs 20
+```
+
+#### Analysis
+```bash
 # Analyze results
 python hybrid_analysis.py
 python analyze_scaling_results.py

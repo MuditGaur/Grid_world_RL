@@ -65,6 +65,50 @@ python main.py --model all --episodes 600 --epochs 8
 python main.py --model all --use-qlearn-agents --qlearn-iters 10000
 ```
 
+### Comparison Experiments (Plots and JSON)
+
+Belief state comparison (classical vs quantum vs hybrid belief):
+
+```bash
+# Full run (training)
+python belief_state_comparison_experiment.py --qubits 8 --episodes 150 --max-epochs 20 --patience 5 \
+  --save-results belief_state_comparison_results.json --save-plots belief_state_comparison_plots.png
+
+# Fast (no training; uses fixed precomputed metrics)
+python belief_state_comparison_experiment.py --use-fixed-results \
+  --save-results belief_state_comparison_results.json --save-plots belief_state_comparison_plots.png
+```
+
+State encoder comparison (classical vs quantum vs hybrid state encoders; belief fixed classical):
+
+```bash
+# Full run (training)
+python state_encoder_comparison_experiment.py --qubits 8 --episodes 150 --max-epochs 20 --patience 5 \
+  --save-results state_encoder_comparison_results.json --save-plots state_encoder_comparison_plots.png
+
+# Use agent partial observation as model input (instead of 17D observer state)
+python state_encoder_comparison_experiment.py --agent-obs-input --qubits 8 --episodes 150 --max-epochs 20 --patience 5 \
+  --save-results state_encoder_comparison_results.json --save-plots state_encoder_comparison_plots.png
+
+# Fast (no training; uses fixed precomputed metrics)
+python state_encoder_comparison_experiment.py --use-fixed-results \
+  --save-results state_encoder_comparison_results.json --save-plots state_encoder_comparison_plots.png
+```
+
+Re-plot final comparison from saved JSON (no training):
+
+```bash
+python examples/comparison_plot.py --use-fixed-results --fixed-results-file final_comparison.json --output final_comparison.png
+```
+
+### Headless/Non-GUI Plotting (Windows PowerShell)
+
+Matplotlib may try to open windows at `plt.show()`. To render files without GUIs use the Agg backend:
+
+```powershell
+$env:MPLBACKEND='Agg'; python <your-command-here>
+```
+
 ### Custom Configuration
 ```bash
 python main.py \

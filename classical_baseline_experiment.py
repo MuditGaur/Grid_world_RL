@@ -33,7 +33,7 @@ def run_classical_experiment(train_loader, val_loader,
     
     # Create model
     start_time = time.time()
-    model = ToMObserver(mode="classical", device=device)
+    model = ToMObserver(belief_type="classical", device=device)
     model.to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     
@@ -73,7 +73,7 @@ def run_classical_experiment(train_loader, val_loader,
     
     # Compile results
     results = {
-        'model_type': 'classical',
+        'belief_type': 'classical',
         'total_time': total_time,
         'avg_epoch_time': total_time / epochs,
         'best_overall_acc': best_results['acc'],

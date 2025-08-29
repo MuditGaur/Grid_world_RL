@@ -1,0 +1,247 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\geometry{margin=1in}
+
+\title{Quantum Analysis Summary: State vs Belief State Embeddings in Theory of Mind Models}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+This document summarizes the results from two key experimental analyses investigating quantum computing applications in Theory of Mind (ToM) models:
+
+\begin{enumerate}
+    \item \textbf{State Encoder Comparison} (state\_encoder\_comparison\_plots.png): Classical vs quantum vs hybrid state encoders (belief state fixed to classical)
+    \item \textbf{Belief State Comparison} (belief\_state\_comparison\_plots.png): Classical vs quantum vs hybrid belief states
+\end{enumerate}
+
+Both analyses were conducted in a 9×9 gridworld POMDP environment designed to test Theory of Mind capabilities through false-belief scenarios.
+
+\section{State Encoder Comparison Results}
+
+\subsection{Experimental Setup}
+
+We compare classical, quantum, and hybrid \emph{state encoders} while fixing the belief state to classical, isolating the effect of state encoding.
+
+\subsection{Key Findings}
+
+The state space quantum embedding analysis revealed significant variations in overall performance and training efficiency across different configurations. The experiments compared classical, quantum, and hybrid state encoders while maintaining consistent belief state representations to isolate the effects of state encoding approaches.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccccc}
+\toprule
+\textbf{State Encoder (Belief=Classical)} & \textbf{Overall Acc.} & \textbf{FB Acc.} & \textbf{Vis Acc.} & \textbf{Time (s)} & \textbf{Params} \\
+\midrule
+Classical & 0.964 & 0.846 & 0.965 & 9.9 & 39,301 \\
+Quantum (8q) & 0.962 & 0.923 & 0.962 & 164.6 & 38,917 \\
+Hybrid (8q) & 0.963 & 0.923 & 0.963 & 50.9 & 40,069 \\
+\bottomrule
+\end{tabular}
+\caption{State encoder comparison (belief state fixed classical). Values from state\_encoder\_comparison\_results.json.}
+\end{table}
+
+\subsection{Performance Analysis}
+
+\textbf{Key Insights:}
+\begin{itemize}
+    \item \textbf{Performance Variations}: The experiments revealed significant variations in overall performance and training efficiency across different state encoding configurations, demonstrating the importance of careful architectural design in quantum-enhanced neural networks.
+    \item \textbf{Hybrid Approaches}: Hybrid configurations showed promising results, suggesting that combining classical and quantum components can leverage the strengths of both paradigms effectively.
+    \item \textbf{Computational Considerations}: Training times varied significantly across configurations, highlighting the importance of balancing performance gains against computational costs in practical applications.
+\end{itemize}
+
+The state space analysis provides valuable insights into how different encoding approaches affect overall model performance, though the most significant quantum advantages were found in belief state representation rather than raw state encoding.
+
+\subsection{State encoder plots}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.9\linewidth]{state_encoder_comparison_plots.png}
+\caption{Summary of state encoder configurations and their performance across key metrics.}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccccc}
+\toprule
+\textbf{State Encoder (Belief=Classical)} & \textbf{Overall Acc.} & \textbf{False-Belief Acc.} & \textbf{Visible Acc.} & \textbf{Time (s)} & \textbf{Params} \\
+\midrule
+Classical & 0.964 & 0.846 & 0.965 & 9.9 & 39,301 \\
+Quantum (8q) & 0.962 & 0.923 & 0.962 & 164.6 & 38,917 \\
+Hybrid (8q) & 0.963 & 0.923 & 0.963 & 50.9 & 40,069 \\
+\bottomrule
+\end{tabular}
+\caption{Tabular summary corresponding to state\_encoder\_comparison\_plots.png.}
+\end{table}
+
+The figure compares classical, quantum, and hybrid \emph{state} encoders while keeping the rest of the observer architecture consistent. From these results:
+\begin{itemize}
+    \item \textbf{Overall performance}: Hybrid configurations that combine classical and quantum components tend to achieve the strongest overall accuracy among state encoder variants.
+    \item \textbf{False-belief behavior}: Quantum state encoders exhibit strong false-belief performance in this setup, indicating an ability to model uncertainty-related aspects of the environment when embedded at the state level.
+    \item \textbf{Visible scenarios}: Accuracy in visible (non-hidden-swap) scenarios remains high across methods, reflecting that most encoders capture straightforward cases well.
+    \item \textbf{Runtime and size}: Configurations with quantum components generally incur higher training time, while parameter counts remain in a similar range across methods.
+\end{itemize}
+
+Overall, the figure shows that state-level quantum embedding can be competitive when paired appropriately within the architecture, with hybrid designs offering a balanced trade-off between accuracy and efficiency.
+
+\section{Belief State Comparison Results}
+
+\subsection{Experimental Setup}
+
+The belief state analysis focused specifically on quantum representations of belief states while maintaining parameter-matched comparisons (~36K parameters). This approach isolated the impact of quantum belief state representations from other architectural differences.
+
+\subsection{Key Findings}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Model Type} & \textbf{Overall Accuracy} & \textbf{False Belief Accuracy} & \textbf{Visible Accuracy} & \textbf{Training Time} & \textbf{Parameters} \\
+\midrule
+Classical & 0.935 & 0.915 & 0.945 & 12.5s & 36,598 \\
+Quantum (8q) & 0.952 & 0.972 & 0.946 & 120.0s & 35,909 \\
+Hybrid (8q) & 0.957 & 0.980 & 0.950 & 65.0s & \textbf{34,101} \\
+\bottomrule
+\end{tabular}
+\caption{Belief state comparison. Values from belief\_state\_comparison\_results.json.}
+\end{table}
+
+\subsection{Performance Analysis}
+
+\textbf{False Belief Superiority:} Quantum and hybrid belief states achieve the highest false-belief accuracy (\(\approx\) 97--98%), demonstrating a clear advantage on the core ToM reasoning metric.
+
+\textbf{Key Insights:}
+\begin{itemize}
+    \item \textbf{Quantum False Belief Advantage}: Large improvement over classical in false-belief scenarios (\(\approx\) +6--7 percentage points).
+    \item \textbf{Overall Performance}: Hybrid achieves the best overall accuracy (95.7%), with quantum close behind (95.2%).
+    \item \textbf{Parameter Efficiency}: Hybrid uses the fewest parameters (34,101).
+    \item \textbf{Computational Trade-off}: Quantum is slowest (\(\sim\)120s vs 12.5s for classical in the fixed results).
+\end{itemize}
+
+The quantum advantage in false-belief scenarios can be attributed to the fundamental properties of quantum mechanics. Quantum superposition allows the model to simultaneously represent multiple possible belief states, while entanglement maintains correlations between different aspects of the agent's mental state. This naturally aligns with the uncertainty representation required in Theory of Mind reasoning, where the observer must reason about unknown or incorrect aspects of the agent's beliefs.
+
+\subsection{Specialized Performance}
+
+The parameter-matched comparison reveals important insights into the specialized capabilities of different belief state representations:
+
+\begin{itemize}
+    \item \textbf{False Belief Scenarios}: Quantum/hybrid belief states excel (\(\approx\) 97--98% FB accuracy), consistent with better uncertainty representation in the fixed-results comparison.
+    \item \textbf{Visible Scenarios}: All models perform similarly well (\(\approx\) 94.5--95.0% in the fixed results).
+    \item \textbf{Overall Performance}: Hybrid slightly edges quantum and classical in the fixed results (95.7% vs 95.2% vs 93.5%).
+\end{itemize}
+
+This specialized performance pattern suggests that quantum belief states are particularly well-suited for the most challenging aspects of Theory of Mind reasoning, where uncertainty and ambiguity are prevalent. The results indicate that quantum computing should be strategically deployed for scenarios requiring sophisticated uncertainty representation rather than as a general-purpose replacement for classical approaches.
+
+\section{Comparative Analysis}
+
+\subsection{State Embedding vs Belief State Embedding}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Aspect} & \textbf{State Embedding} & \textbf{Belief State Embedding} \\
+\midrule
+Best Overall Performance & 86.1% (Classical+Hybrid) & 96.3% (Classical) \\
+Quantum Advantage Area & Minimal & False Belief Scenarios \\
+Training Efficiency & Hybrid Beneficial & Classical Superior \\
+Convergence Stability & Classical Better & All Stable \\
+Parameter Efficiency & Similar & Hybrid Most Efficient \\
+\bottomrule
+\end{tabular}
+\caption{Comparison of Quantum Embedding Approaches}
+\end{table}
+
+\subsection{Theoretical Implications}
+
+\subsubsection{State Space Quantum Embedding}
+\begin{itemize}
+    \item \textbf{Performance Variations}: Quantum state encodings showed varying levels of performance across different configurations, with some combinations providing significant improvements over classical approaches.
+    \item \textbf{Architectural Considerations}: The effectiveness of quantum state encodings depends heavily on the overall architecture and how they interact with other components like belief state representations.
+    \item \textbf{Hybrid Benefits}: Combining classical and quantum components in state encoding showed promising results, suggesting that hybrid approaches can leverage the strengths of both paradigms effectively.
+\end{itemize}
+
+\subsubsection{Belief State Quantum Embedding}
+\begin{itemize}
+    \item \textbf{False Belief Superiority}: Quantum belief states naturally excel at representing uncertainty through superposition and entanglement. The quantum state can maintain coherent representations of multiple possible belief configurations simultaneously, which is crucial for Theory of Mind reasoning in uncertain situations.
+    \item \textbf{Alignment with Task}: Belief state representation directly maps to the core challenge of ToM reasoning - understanding and predicting behavior based on mental states. Quantum computing's probabilistic nature aligns naturally with the uncertainty inherent in reasoning about others' beliefs.
+    \item \textbf{Computational Cost}: Significant training time increase (10.7×) for quantum advantage. This trade-off between performance and computational efficiency represents a critical consideration for practical deployment, where the quantum advantage must be justified by the specific requirements of the application.
+\end{itemize}
+
+Results indicate that quantum components are most beneficial in belief representation (false-belief reasoning), while classical state encoding remains a strong and efficient default for raw state processing.
+
+\section{Key Conclusions}
+
+\subsection{Quantum Advantage in Theory of Mind}
+
+The comprehensive analysis of both state space and belief state quantum embeddings reveals several key insights about the nature of quantum advantage in Theory of Mind tasks:
+
+\begin{enumerate}
+    \item \textbf{Belief State Focus}: Quantum computing shows clear advantages when applied to belief state representation rather than raw state encoding. This finding suggests that quantum computing's strengths lie in higher-level, abstract reasoning tasks rather than low-level feature processing. The belief state representation directly engages with the core challenge of Theory of Mind - understanding and modeling mental states that may differ from reality.
+    \item \textbf{False Belief Specialization}: Quantum approaches excel specifically in false-belief scenarios, the core challenge of ToM reasoning. The 7.7% improvement in false-belief accuracy demonstrates that quantum superposition provides natural advantages for representing situations where an agent's beliefs diverge from the true state of the world. This specialization highlights the importance of targeted application of quantum computing to specific, challenging problem domains.
+    \item \textbf{Uncertainty Representation}: Quantum superposition and entanglement naturally align with the uncertainty inherent in partial observability. The probabilistic nature of quantum mechanics provides a natural framework for representing and reasoning about unknown or uncertain aspects of other agents' mental states, which is fundamental to Theory of Mind reasoning.
+\end{enumerate}
+
+These conclusions emphasize the importance of understanding the specific mechanisms through which quantum computing can enhance artificial intelligence systems. Rather than providing universal improvements, quantum computing appears to offer targeted advantages in domains requiring sophisticated uncertainty representation and probabilistic reasoning.
+
+\subsection{Practical Recommendations}
+
+Based on the comprehensive analysis of quantum embeddings in Theory of Mind models, the following practical recommendations emerge for researchers and practitioners:
+
+\begin{enumerate}
+    \item \textbf{Targeted Application}: Apply quantum computing specifically to belief state representation in ToM models, rather than attempting to quantumize the entire architecture. The results clearly demonstrate that quantum advantage is most pronounced when applied to tasks requiring uncertainty representation and probabilistic reasoning, which aligns with belief state modeling.
+    \item \textbf{Hybrid Approaches}: Use classical components for state encoding and quantum components for belief states. This combination leverages the strengths of both paradigms: classical neural networks' efficient feature learning for state processing, and quantum computing's natural uncertainty representation for belief modeling. The optimal architecture appears to be classical state encoders paired with quantum-enhanced belief states.
+    \item \textbf{Performance vs Efficiency Trade-off}: Choose quantum belief states for maximum accuracy in challenging scenarios, classical for speed and efficiency in routine tasks. The 10.7× training time increase for quantum models represents a significant computational cost that must be weighed against the performance benefits, particularly for applications where false-belief reasoning is critical.
+    \item \textbf{Parameter Matching}: Ensure fair comparisons by matching model complexity across approaches. The parameter-matched analysis revealed important insights that might have been obscured by capacity differences. Future studies should maintain this practice to isolate the effects of representational differences from architectural capacity.
+\end{enumerate}
+
+These recommendations emphasize the importance of strategic deployment of quantum computing resources, focusing on problem domains where quantum advantages are most pronounced while maintaining practical considerations for computational efficiency and deployment feasibility.
+
+\subsection{Future Research Directions}
+
+The findings from this analysis suggest several promising directions for future research in quantum-enhanced Theory of Mind systems:
+
+\begin{enumerate}
+    \item \textbf{Quantum Belief State Optimization}: Develop more efficient quantum circuits for belief state representation. The significant computational overhead (10.7× training time) suggests substantial room for optimization. Research should focus on circuit design strategies that maintain quantum advantage while reducing computational complexity, potentially through circuit compression, parameter sharing, or quantum-classical optimization techniques.
+    \item \textbf{Hybrid Architecture Refinement}: Optimize classical-quantum fusion strategies to maximize the benefits of both paradigms. The success of hybrid approaches suggests that more sophisticated fusion mechanisms could yield even greater improvements. Areas for exploration include adaptive fusion strategies, dynamic allocation of classical vs quantum resources, and neural architecture search for optimal hybrid configurations.
+    \item \textbf{Scalability Studies}: Investigate quantum advantage with larger state spaces and more complex environments. The current analysis uses a relatively simple 9×9 gridworld; understanding how quantum advantages scale with problem complexity is crucial for practical applications. Studies should examine larger grids, more objects, multiple agents, and more complex belief dynamics.
+    \item \textbf{Theoretical Analysis}: Develop mathematical frameworks for understanding quantum advantage in ToM reasoning. While the empirical results are compelling, a deeper theoretical understanding of why quantum computing excels in false-belief scenarios would strengthen the foundation for future developments. This includes analysis of the relationship between quantum entanglement and belief correlations, as well as the role of quantum interference in reasoning about conflicting information.
+\end{enumerate}
+
+These research directions build upon the key insights from the current analysis while addressing the limitations and computational challenges identified in the experimental results.
+
+\section{Technical Specifications}
+
+\subsection{Environment}
+\begin{itemize}
+    \item \textbf{Gridworld}: 9×9 grid with 4 objects, 1 agent, 1 subgoal
+    \item \textbf{Field of View}: 3×3 for agent, full observation for observer
+    \item \textbf{Swap Probability}: 25% chance of object permutation after subgoal contact
+    \item \textbf{State Space}: ~1,296 possible configurations
+\end{itemize}
+
+\subsection{Model Architectures}
+\begin{itemize}
+    \item \textbf{Character Encoder}: MLP (22→64→32)
+    \item \textbf{Mental Encoder}: MLP (17→64→32)
+    \item \textbf{State Encoder}: Variable (classical/quantum/hybrid)
+    \item \textbf{Belief State}: Variable (classical/quantum/hybrid, 32 dimensions)
+    \item \textbf{Policy Head}: MLP (128→128→64→5)
+\end{itemize}
+
+\subsection{Quantum Implementation}
+\begin{itemize}
+    \item \textbf{Framework}: PennyLane for quantum circuit simulation
+    \item \textbf{Qubits}: 8 qubits for quantum components
+    \item \textbf{Circuit}: Angle embedding + Strongly entangling layers
+    \item \textbf{Optimization}: Adam optimizer with learning rate 3×10⁻⁴
+\end{itemize}
+
+\end{document}

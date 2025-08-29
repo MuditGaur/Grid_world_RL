@@ -1,0 +1,215 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\title{Formal Problem Setup: Quantum vs Classical Belief State Representations in POMDPs for Theory of Mind}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Problem Definition}
+
+We consider a Partially Observable Markov Decision Process (POMDP) framework for evaluating Theory of Mind (ToM) capabilities through belief state representations. The problem involves comparing classical, quantum, and hybrid approaches to belief state modeling in scenarios with inherent uncertainty and partial observability.
+
+Theory of Mind (ToM) refers to the cognitive ability to attribute mental states—beliefs, intentions, desires, and knowledge—to oneself and others. This capability is fundamental to human social intelligence and is increasingly recognized as crucial for developing socially-aware artificial intelligence systems. The challenge lies in creating computational models that can reason about the mental states of agents operating in partially observable environments, where information is incomplete and beliefs may diverge from reality.
+
+The core innovation of this work is the application of quantum computational principles to belief state representation in POMDPs. While classical neural networks have shown promise in ToM tasks, they often struggle with representing and reasoning about uncertainty in a coherent manner. Quantum computing offers natural advantages for uncertainty representation through superposition, entanglement, and quantum interference, making it particularly well-suited for modeling the inherent uncertainty in Theory of Mind scenarios.
+
+\section{Environment Specification}
+
+\subsection{Gridworld POMDP}
+The environment is a $9 \times 9$ gridworld with the following components:
+\begin{itemize}
+    \item \textbf{State Space} $\mathcal{S}$: All possible configurations of object positions, agent position, wall layout, and swap status
+    \item \textbf{Action Space} $\mathcal{A} = \{UP, DOWN, LEFT, RIGHT, STAY\}$
+    \item \textbf{Observation Space} $\mathcal{O}$: Agent observes $6 \times 3 \times 3$ tensor (walls + subgoal + 4 object masks), Observer sees full 17D state vector
+\end{itemize}
+
+\subsection{Partial Observability Mechanisms}
+\begin{enumerate}
+    \item \textbf{Field of View Limitation}: Agent's observation is restricted to a $3 \times 3$ grid around its position
+    \item \textbf{Hidden Swap Mechanism}: Objects permute positions with probability $p_{swap} = 0.25$ when agent reaches subgoal, creating false beliefs if swaps occur outside FOV
+\end{enumerate}
+
+The partial observability creates a natural alignment with real-world scenarios where agents have limited sensory access to their environment. The field of view limitation simulates the restricted perspective that agents typically have in complex environments, while the hidden swap mechanism introduces dynamic changes that can occur without the agent's knowledge. This setup creates the fundamental challenge of maintaining coherent beliefs about the world state despite incomplete and potentially outdated information.
+
+The environment supports approximately $9^2 \times 4! \times 2 \approx 1,296$ possible state configurations, considering object permutations, agent positions, wall layouts, and swap status. The transition dynamics are deterministic for agent movement but probabilistic for object swaps, creating a rich space of possible belief states that the agent must navigate.
+
+\section{Belief State Representations}
+
+\subsection{Classical Belief State}
+For a state dimension $d_s = 17$ and belief dimension $d_b = 64$:
+\begin{align}
+    \mathbf{b}_t &= f_{\theta}^{classical}(\mathbf{s}_t) \\
+    f_{\theta}^{classical}(\mathbf{s}) &= \tanh(W_2 \cdot \text{ReLU}(W_1 \cdot \mathbf{s} + \mathbf{b}_1) + \mathbf{b}_2)
+\end{align}
+where $W_1 \in \mathbb{R}^{128 \times 17}$, $W_2 \in \mathbb{R}^{64 \times 128}$ are learnable parameters.
+
+The classical approach uses traditional neural networks with fully connected layers and non-linear activation functions. This representation maps the 17-dimensional state vector to a 64-dimensional belief space through a series of linear transformations and non-linearities. The architecture includes dropout layers (rate 0.1) for regularization and uses the hyperbolic tangent activation for the final output to ensure bounded belief representations. While effective for many tasks, classical networks can struggle with representing uncertainty in a coherent manner, often converging to deterministic mappings that may not capture the inherent ambiguity in partially observable scenarios.
+
+\subsection{Quantum Belief State}
+Using variational quantum circuits with $n$ qubits:
+\begin{align}
+    \mathbf{b}_t &= f_{\theta}^{quantum}(\mathbf{s}_t) \\
+    f_{\theta}^{quantum}(\mathbf{s}) &= \text{PostProcess}(\mathcal{U}_{\theta}(\mathcal{E}(\mathbf{s})))
+\end{align}
+where $\mathcal{E}: \mathbb{R}^{17} \rightarrow \mathbb{C}^{2^n}$ is angle embedding, $\mathcal{U}_{\theta}$ is a parameterized quantum circuit with StronglyEntanglingLayers, and PostProcess maps quantum measurements to belief space.
+
+The quantum approach leverages variational quantum circuits implemented through PennyLane, using $n=8$ qubits in our experiments. The angle embedding maps classical state features to quantum rotation angles, creating a quantum superposition that can represent multiple possible states simultaneously. The StronglyEntanglingLayers introduce quantum entanglement between qubits, allowing the model to maintain correlations between different aspects of the belief state. The quantum circuit is followed by a classical post-processing network that maps quantum measurements to the belief space. This architecture naturally handles uncertainty through quantum superposition, where the quantum state can represent a weighted combination of multiple possible belief configurations, making it particularly well-suited for scenarios with incomplete information.
+
+\subsection{Quantum Embedding Details}
+
+The quantum embedding process transforms classical state information into quantum states through several key mathematical operations:
+
+\subsubsection{Angle Embedding}
+For a classical state vector $\mathbf{s} \in \mathbb{R}^{17}$, the angle embedding maps each component to rotation angles:
+\begin{align}
+    \mathcal{E}(\mathbf{s}) &= \bigotimes_{i=1}^{n} R_y(\phi_i(\mathbf{s}))|0\rangle_i \\
+    \phi_i(\mathbf{s}) &= \sum_{j=1}^{17} W_{ij} s_j + b_i
+\end{align}
+where $R_y(\theta) = e^{-i\frac{\theta}{2}Y}$ is the Y-rotation gate, $W_{ij} \in \mathbb{R}^{n \times 17}$ and $b_i \in \mathbb{R}^n$ are learnable parameters, and $|0\rangle_i$ is the ground state of the $i$-th qubit.
+
+\subsubsection{Quantum Circuit Architecture}
+The parameterized quantum circuit $\mathcal{U}_{\theta}$ consists of multiple layers:
+\begin{align}
+    \mathcal{U}_{\theta} &= \prod_{l=1}^{L} \mathcal{U}_l(\boldsymbol{\theta}_l) \\
+    \mathcal{U}_l(\boldsymbol{\theta}_l) &= \text{StronglyEntanglingLayers}(\boldsymbol{\theta}_l)
+\end{align}
+where each layer applies rotation gates followed by entangling operations:
+\begin{align}
+    \text{StronglyEntanglingLayers}(\boldsymbol{\theta}_l) &= \prod_{i=1}^{n} R_z(\theta_{l,i}^z) R_y(\theta_{l,i}^y) R_x(\theta_{l,i}^x) \cdot \text{CNOT}_{i,(i+1)\bmod n}
+\end{align}
+
+\subsubsection{Measurement and Post-Processing}
+The quantum state is measured in the computational basis:
+\begin{align}
+    |\psi_{\text{final}}\rangle &= \mathcal{U}_{\theta}(\mathcal{E}(\mathbf{s}))|\psi_0\rangle \\
+    p_k &= |\langle k | \psi_{\text{final}} \rangle|^2
+\end{align}
+where $|k\rangle$ represents the $k$-th computational basis state and $p_k$ is the measurement probability. The post-processing network maps these probabilities to belief space:
+\begin{align}
+    \mathbf{b}_t &= \text{PostProcess}(\mathbf{p}) = \tanh(W_p \cdot \mathbf{p} + \mathbf{b}_p)
+\end{align}
+where $\mathbf{p} = [p_0, p_1, \ldots, p_{2^n-1}]$ and $W_p \in \mathbb{R}^{64 \times 2^n}$.
+
+\subsubsection{Uncertainty Representation}
+The quantum embedding naturally represents uncertainty through superposition:
+\begin{align}
+    |\psi_{\text{uncertain}}\rangle &= \sum_{i} \alpha_i |\psi_i\rangle \\
+    \text{where } \sum_{i} |\alpha_i|^2 &= 1
+\end{align}
+This allows the quantum state to maintain multiple possible belief configurations simultaneously, with the amplitudes $\alpha_i$ encoding the relative likelihood of each configuration. The entanglement between qubits preserves correlations:
+\begin{align}
+    \text{Corr}(q_i, q_j) &= \langle \psi | \sigma_i^z \otimes \sigma_j^z | \psi \rangle - \langle \psi | \sigma_i^z | \psi \rangle \langle \psi | \sigma_j^z | \psi \rangle
+\end{align}
+where $\sigma_i^z$ is the Pauli-Z operator on qubit $i$.
+
+\subsection{Hybrid Belief State}
+Combines classical and quantum components:
+\begin{align}
+    \mathbf{b}_t^{classical} &= f_{\theta}^{classical}(\mathbf{s}_t) \\
+    \mathbf{b}_t^{quantum} &= f_{\theta}^{quantum}(\mathbf{s}_t) \\
+    \mathbf{b}_t &= \text{Fusion}(\mathbf{b}_t^{classical} \oplus \mathbf{b}_t^{quantum})
+\end{align}
+
+The hybrid approach seeks to combine the computational efficiency of classical networks with the uncertainty representation capabilities of quantum circuits. This architecture processes the same input through both classical and quantum pathways in parallel, then fuses the resulting representations through a learned fusion layer. The fusion layer is implemented as a neural network that learns to optimally combine the classical and quantum belief representations. This approach allows the model to leverage the strengths of both paradigms: the deterministic, well-understood behavior of classical networks for straightforward cases, and the quantum advantage for scenarios requiring sophisticated uncertainty reasoning. The hybrid architecture is particularly valuable in practice, as it provides a bridge between classical and quantum approaches while maintaining reasonable computational requirements.
+
+\section{Theory of Mind Observer}
+
+The ToM observer predicts agent actions based on:
+\begin{align}
+    \pi(a_t | \mathbf{c}, \mathbf{m}, \mathbf{b}_t) &= \text{softmax}(f_{head}(\mathbf{c} \oplus \mathbf{m} \oplus \mathbf{b}_t))
+\end{align}
+where $\mathbf{c} \in \mathbb{R}^{32}$ is character encoding (past behavior), $\mathbf{m} \in \mathbb{R}^{32}$ is mental state encoding (recent context), and $\mathbf{b}_t$ is the belief state representation.
+
+The Theory of Mind observer serves as the evaluation framework for belief state representations. It takes three key inputs: character encoding that captures the agent's behavioral patterns from past episodes, mental state encoding that represents recent behavioral context, and the belief state representation that models the agent's current understanding of the world. The observer's task is to predict the agent's next action based on these three components, effectively implementing a "mind-reading" capability. The character encoder processes 22-dimensional episode summaries to extract behavioral traits, while the mental encoder processes the current 17-dimensional state to capture immediate context. The policy head combines all three representations through a multi-layer perceptron to produce action probabilities over the 5-dimensional action space. This architecture allows for systematic evaluation of how well different belief state representations support Theory of Mind reasoning.
+
+\subsection{Character Encoding: Behavioral Consistency and Personality}
+
+The character encoding $\mathbf{c} \in \mathbb{R}^{32}$ captures the agent's behavioral patterns and decision-making preferences across multiple episodes. This encoding is crucial for Theory of Mind reasoning because it represents the agent's "personality" or behavioral consistency—the stable traits that influence how the agent makes decisions regardless of the immediate situation. The character encoder processes 22-dimensional episode summaries that include metrics such as:
+
+\begin{itemize}
+    \item \textbf{Exploration patterns}: How frequently the agent explores vs. exploits known information
+    \item \textbf{Risk tolerance}: The agent's tendency to take actions with uncertain outcomes
+    \item \textbf{Object preferences}: Which objects the agent prioritizes when multiple targets are available
+    \item \textbf{Path planning style}: Whether the agent prefers direct routes or more circuitous paths
+    \item \textbf{Memory utilization}: How the agent uses past experiences to inform current decisions
+\end{itemize}
+
+This character information is essential because real-world Theory of Mind reasoning heavily relies on understanding an individual's behavioral tendencies. For example, knowing that someone is generally cautious helps predict their actions even in novel situations. The character encoding allows the observer to make predictions about agent behavior that go beyond the immediate state and belief information, incorporating the agent's established behavioral patterns.
+
+\subsection{Mental State Encoding: Situational Context and Immediate Intentions}
+
+The mental state encoding $\mathbf{m} \in \mathbb{R}^{32}$ captures the agent's immediate cognitive context and situational awareness. This encoding represents the agent's current mental state, including factors such as:
+
+\begin{itemize}
+    \item \textbf{Recent experiences}: The agent's memory of recent actions and their outcomes
+    \item \textbf{Current goals}: The agent's immediate objectives and priorities
+    \item \textbf{Emotional state}: The agent's level of frustration, satisfaction, or urgency
+    \item \textbf{Attention focus}: Which aspects of the environment the agent is currently attending to
+    \item \textbf{Decision confidence}: The agent's certainty about the current situation
+\end{itemize}
+
+The mental state encoding is particularly important for Theory of Mind reasoning because it captures the dynamic, situation-specific aspects of cognition that influence decision-making. While character encoding provides stable behavioral patterns, mental state encoding captures the immediate context that might cause an agent to deviate from their typical behavior. For instance, even a normally cautious agent might take risks when under time pressure or when pursuing a highly valued goal.
+
+\subsection{Integration of Multiple Mental Representations}
+
+The combination of character encoding, mental state encoding, and belief state representation creates a comprehensive model of the agent's mind:
+
+\begin{align}
+    \text{Agent Mind Model} &= f(\mathbf{c}, \mathbf{m}, \mathbf{b}_t) \\
+    &= \text{Character} \oplus \text{Mental State} \oplus \text{Beliefs}
+\end{align}
+
+This multi-faceted approach mirrors how humans reason about others' minds. When predicting someone's behavior, we consider:
+\begin{enumerate}
+    \item \textbf{Who they are} (character): Their personality, preferences, and behavioral tendencies
+    \item \textbf{What they're thinking about} (mental state): Their current goals, emotions, and immediate context
+    \item \textbf{What they know} (beliefs): Their understanding of the current situation
+\end{enumerate}
+
+The character encoding provides the "baseline" behavior, the mental state encoding captures situational modifications to that baseline, and the belief state representation determines how the agent's knowledge (or lack thereof) influences their decisions. This hierarchical structure allows the observer to make nuanced predictions about agent behavior, accounting for both stable personality traits and dynamic situational factors.
+
+The relevance of this multi-component approach becomes particularly apparent in false belief scenarios. When an agent's beliefs are incorrect, the observer must understand not only what the agent knows (belief state), but also how the agent's personality (character) and current mental state will influence their actions given those incorrect beliefs. This comprehensive mental modeling is what distinguishes sophisticated Theory of Mind reasoning from simple action prediction.
+
+\section{False Belief Scenarios}
+
+The critical test involves scenarios where:
+\begin{align}
+    \text{Agent Belief: } \mathbf{b}_t^{agent} &\neq \text{True State: } \mathbf{s}_t \\
+    \text{False Belief Accuracy} &= \mathbb{E}_{(\mathbf{s}, \mathbf{b}^{false})} [\mathbb{I}(\pi(a | \mathbf{b}^{false}) = a_{true})]
+\end{align}
+
+False belief scenarios represent the gold standard for evaluating Theory of Mind capabilities, as they directly test an observer's ability to reason about situations where an agent's beliefs diverge from reality. These scenarios are created through the hidden swap mechanism, where objects change positions outside the agent's field of view. The agent continues to act based on outdated beliefs, while the observer must predict these actions despite knowing the true state of the world. This creates a fundamental challenge: the observer must understand not only what the agent knows, but also what the agent doesn't know and how this ignorance affects the agent's decision-making process. False belief accuracy measures how well the observer can predict agent actions when the agent's beliefs are incorrect, making it the most stringent test of Theory of Mind reasoning capabilities. This metric is particularly important because it captures the essence of social intelligence—the ability to understand and predict behavior based on others' mental states, even when those mental states are mistaken.
+
+\section{Performance Metrics}
+
+For fair comparison with parameter-matched models ($\sim$36K parameters):
+\begin{align}
+    \text{Overall Accuracy} &= \mathbb{E}_{(\mathbf{s}, a)} [\mathbb{I}(\hat{a} = a)] \\
+    \text{False-Belief Accuracy} &= \mathbb{E}_{(\mathbf{s}, a, \mathbf{b}^{false})} [\mathbb{I}(\hat{a} = a)] \\
+    \text{Visible Accuracy} &= \mathbb{E}_{(\mathbf{s}, a, \mathbf{b}^{true})} [\mathbb{I}(\hat{a} = a)] \\
+    \text{Training Efficiency} &= \frac{\text{Accuracy}}{\text{Training Time}}
+\end{align}
+
+The evaluation framework employs multiple complementary metrics to assess different aspects of Theory of Mind performance. Overall accuracy measures general prediction capability across all scenarios, providing a baseline for model competence. False-belief accuracy specifically targets the critical ToM capability of reasoning about incorrect beliefs, serving as the primary metric for social intelligence evaluation. Visible accuracy measures performance during scenarios where the agent has accurate beliefs about the world state, either because no object swaps have occurred or because any swaps were visible within the agent's field of view. This metric provides insight into the model's basic action prediction capabilities when Theory of Mind reasoning is not required. Training efficiency balances performance gains against computational costs, important for practical applications. The parameter matching constraint ensures fair comparison by maintaining similar model complexity across approaches, preventing performance differences from being attributed to capacity rather than representational advantages. This multi-faceted evaluation approach allows for comprehensive assessment of how different belief state representations support Theory of Mind reasoning, with particular emphasis on the challenging false belief scenarios that most directly test social intelligence capabilities.
+
+\section{Theoretical Advantage}
+
+Quantum approaches excel in uncertainty representation through:
+\begin{itemize}
+    \item \textbf{Superposition}: $\sum_i \alpha_i |\psi_i\rangle$ represents multiple possible states simultaneously
+    \item \textbf{Entanglement}: Maintains correlations between uncertain components
+    \item \textbf{Quantum Interference}: Resolves conflicting information through phase relationships
+\end{itemize}
+
+This naturally aligns with POMDP uncertainty, where the agent must reason about unknown states and maintain coherent beliefs despite partial observability.
+
+The quantum advantage in Theory of Mind tasks stems from fundamental properties of quantum mechanics that directly address the challenges of uncertainty representation. Superposition allows quantum systems to maintain multiple possible belief states simultaneously, avoiding the need to commit to a single deterministic representation when information is incomplete. Entanglement enables the preservation of correlations between different aspects of the agent's mental state, crucial for maintaining coherent beliefs about interrelated world features. Quantum interference provides a mechanism for resolving conflicting information through constructive and destructive interference patterns, allowing the system to weigh different pieces of evidence in a principled manner.
+
+These quantum properties create a natural alignment with the uncertainty inherent in POMDPs and Theory of Mind reasoning. In partially observable environments, agents must maintain beliefs about unknown aspects of the world while updating their understanding based on limited observations. Quantum representations can capture this uncertainty more naturally than classical approaches, which often struggle to represent ambiguity without losing information or converging to overly confident but potentially incorrect beliefs. This theoretical advantage translates into practical performance improvements, particularly in false belief scenarios where the ability to represent and reason about uncertainty is paramount.
+
+\end{document}

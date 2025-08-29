@@ -1,8 +1,12 @@
 """
 Training and evaluation functions for Theory of Mind models.
 
-This module provides training loops and evaluation metrics for the ToM observer
-models, including specialized metrics for false-belief scenarios.
+- train_epoch: one training pass computing cross-entropy loss on action labels
+- eval_model: aggregate loss/accuracy plus False-Belief vs Visible bucket metrics
+
+False-Belief buckets are determined by the dataset's `swap_hidden` flag (1.0
+when a recent swap occurred outside the agent's FOV within a window), enabling
+per-bucket accuracy reporting.
 """
 
 import torch
@@ -10,7 +14,12 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 def train_epoch(model, loader, opt, device="cpu"):
-    """Train a single epoch."""
+    """Train a single epoch.
+
+    Iterates batches from `loader`, moves tensors to device, performs forward,
+    computes cross-entropy against `label` (next action), backpropagates, and
+    steps the optimizer. Returns average loss over all samples in the epoch.
+    """
     model.train()
     tot_loss = 0.0
     tot_n = 0
@@ -31,7 +40,15 @@ def train_epoch(model, loader, opt, device="cpu"):
 
 
 def eval_model(model, loader, device="cpu"):
-    """Evaluate model performance with detailed metrics."""
+    """Evaluate model performance with detailed metrics.
+
+    Returns dict with:
+    - loss: average cross-entropy over dataset
+    - acc: overall accuracy across all samples
+    - acc_false_belief: accuracy where `swap_hidden` > 0.5
+    - acc_visible: accuracy where `swap_hidden` <= 0.5
+    - n: number of evaluated samples
+    """
     model.eval()
     ce = nn.CrossEntropyLoss(reduction='sum')
     tot_loss = 0.0

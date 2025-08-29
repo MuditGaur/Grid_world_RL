@@ -14,6 +14,7 @@ import numpy as np
 import json
 import os
 from typing import Dict, List
+import argparse
 
 def plot_training_curves(results: Dict[str, List[Dict]], save_path: str = None):
     """Plot training curves for different models."""
@@ -86,45 +87,29 @@ def load_results(filename: str = "results.json") -> Dict:
         return json.load(f)
 
 def main():
-    """Example usage of visualization functions."""
-    print("=== Results Visualization Demo ===\n")
-    
-    # Example results (replace with actual results from training)
-    example_results = {
-        'classical': {
-            'acc': 0.75,
-            'acc_false_belief': 0.68,
-            'acc_visible': 0.82,
-            'loss': 0.45
-        },
-        'quantum': {
-            'acc': 0.78,
-            'acc_false_belief': 0.72,
-            'acc_visible': 0.84,
-            'loss': 0.42
-        },
-        'hybrid': {
-            'acc': 0.80,
-            'acc_false_belief': 0.75,
-            'acc_visible': 0.85,
-            'loss': 0.40
-        }
-    }
-    
-    print("1. Plotting final performance comparison...")
-    plot_final_comparison(example_results, "final_comparison.png")
-    
-    print("2. Saving results to JSON...")
-    save_results(example_results, "example_results.json")
-    
-    print("3. Loading and displaying results...")
-    loaded_results = load_results("example_results.json")
-    print("Loaded results:")
-    for model, metrics in loaded_results.items():
-        print(f"  {model}: {metrics}")
-    
-    print("\n=== Visualization demo completed! ===")
-    print("To use with real results, modify the results dictionary in this script.")
+    """CLI to plot final comparison from pre-saved results only when requested."""
+    parser = argparse.ArgumentParser(description="Plot final comparison from pre-saved JSON results")
+    parser.add_argument('--use-fixed-results', action='store_true',
+                        help='If set, load results from JSON and generate the plot')
+    parser.add_argument('--fixed-results-file', type=str, default='final_comparison.json',
+                        help='Path to JSON file with results (default: final_comparison.json)')
+    parser.add_argument('--output', type=str, default='final_comparison.png',
+                        help='Output PNG filename (default: final_comparison.png)')
+    args = parser.parse_args()
+
+    if not args.use_fixed_results:
+        print("Nothing to do: pass --use-fixed-results to load a JSON and plot.")
+        print("Example: python examples/comparison_plot.py --use-fixed-results --fixed-results-file final_comparison.json")
+        return
+
+    if not os.path.isfile(args.fixed_results_file):
+        print(f"ERROR: Results file not found: {args.fixed_results_file}")
+        return
+
+    results = load_results(args.fixed_results_file)
+    print(f"Loaded results from {args.fixed_results_file}. Generating {args.output}...")
+    plot_final_comparison(results, args.output)
+    print(f"Saved plot to {args.output}")
 
 if __name__ == "__main__":
     main()

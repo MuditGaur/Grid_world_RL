@@ -42,7 +42,7 @@ def run_single_experiment(n_qubits: int, train_loader, val_loader,
     
     # Create model
     start_time = time.time()
-    model = ToMObserver(mode="quantum", n_qubits=n_qubits, device=device)
+    model = ToMObserver(belief_type="quantum", n_qubits=n_qubits, device=device)
     model.to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     
@@ -146,7 +146,7 @@ def plot_scaling_results(results: List[Dict], save_path: str = None):
     qubit_counts = [r['n_qubits'] for r in results]
     
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-    fig.suptitle('Quantum ToM Model Scaling with Qubit Count', fontsize=16)
+    fig.suptitle('Quantum Belief State ToM Model Scaling with Qubit Count', fontsize=16)
     
     # Performance metrics
     overall_acc = [r['best_overall_acc'] for r in results]
@@ -211,7 +211,7 @@ def print_summary_table(results: List[Dict]):
         return
     
     print("\n" + "="*100)
-    print("QUANTUM TOM SCALING EXPERIMENT RESULTS")
+    print("QUANTUM BELIEF STATE TOM SCALING EXPERIMENT RESULTS")
     print("="*100)
     print(f"{'Qubits':<8} {'Overall Acc':<12} {'FB Acc':<10} {'Vis Acc':<10} "
           f"{'Total Time':<12} {'Epochs':<8} {'Best Epoch':<12} {'Params':<10}")

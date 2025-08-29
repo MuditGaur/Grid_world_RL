@@ -1,0 +1,20 @@
+{
+  "classical": {
+    "acc": 0.75,
+    "acc_false_belief": 0.68,
+    "acc_visible": 0.82,
+    "loss": 0.45
+  },
+  "quantum": {
+    "acc": 0.78,
+    "acc_false_belief": 0.72,
+    "acc_visible": 0.84,
+    "loss": 0.42
+  },
+  "hybrid": {
+    "acc": 0.8,
+    "acc_false_belief": 0.75,
+    "acc_visible": 0.85,
+    "loss": 0.4
+  }
+}

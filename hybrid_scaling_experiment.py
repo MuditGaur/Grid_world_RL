@@ -42,7 +42,7 @@ def run_single_hybrid_experiment(n_qubits: int, train_loader, val_loader,
     
     # Create hybrid model
     start_time = time.time()
-    model = ToMObserver(mode="hybrid", n_qubits=n_qubits, device=device)
+    model = ToMObserver(belief_type="hybrid", n_qubits=n_qubits, device=device)
     model.to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     
@@ -96,7 +96,7 @@ def run_single_hybrid_experiment(n_qubits: int, train_loader, val_loader,
     actual_epochs = len(train_losses)
     results = {
         'n_qubits': n_qubits,
-        'model_type': 'hybrid',
+        'belief_type': 'hybrid',
         'total_time': total_time,
         'avg_epoch_time': total_time / actual_epochs,
         'best_overall_acc': best_results['acc'],
@@ -147,7 +147,7 @@ def plot_hybrid_scaling_results(results: List[Dict], save_path: str = None):
     qubit_counts = [r['n_qubits'] for r in results]
     
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-    fig.suptitle('Hybrid ToM Model Scaling with Qubit Count', fontsize=16)
+    fig.suptitle('Hybrid Belief State ToM Model Scaling with Qubit Count', fontsize=16)
     
     # Performance metrics
     overall_acc = [r['best_overall_acc'] for r in results]
@@ -212,7 +212,7 @@ def print_hybrid_summary_table(results: List[Dict]):
         return
     
     print("\n" + "="*100)
-    print("HYBRID TOM SCALING EXPERIMENT RESULTS")
+    print("HYBRID BELIEF STATE TOM SCALING EXPERIMENT RESULTS")
     print("="*100)
     print(f"{'Qubits':<8} {'Overall Acc':<12} {'FB Acc':<10} {'Vis Acc':<10} "
           f"{'Total Time':<12} {'Epochs':<8} {'Best Epoch':<12} {'Params':<10}")

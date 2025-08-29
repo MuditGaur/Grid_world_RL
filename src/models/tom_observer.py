@@ -1,47 +1,50 @@
 """
 Theory of Mind observer models.
 
-This module implements different ToM-style observers that predict agent actions
-using classical, quantum, or hybrid state representations.
+This module implements a compact ToM-style observer that predicts an agent's
+next action by fusing:
+- Character embedding (summary of past episodes; behavioral prior)
+- Mental embedding (recent-window context; short-term situational context)
+- Belief-state representation over the current world state
+
+Belief-state backends:
+- classical: higher-dimensional classical belief embedding (e.g., 64-d)
+- classical_matched: parameter-matched smaller classical embedding (e.g., 32-d)
+- quantum: variational quantum circuit embedding (requires PennyLane)
+- hybrid / hybrid_matched: fusion of classical + quantum with matched sizes
+
+The observer outputs logits over 5 actions (UP/DOWN/LEFT/RIGHT/STAY).
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .quantum_layer import QuantumEncoder
-
-# Check if PennyLane is available
-try:
-    import pennylane as qml
-    _HAS_PENNYLANE = True
-except Exception as e:
-    qml = None
-    _HAS_PENNYLANE = False
-
-class ClassicalStateEncoder(nn.Module):
-    """Classical neural network state encoder."""
-    def __init__(self, in_dim: int, hid: int = 64, out: int = 32):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, hid), nn.ReLU(),
-            nn.Linear(hid, out), nn.ReLU(),
-        )
-    def forward(self, x):
-        return self.net(x)
-
+from .belief_states import create_belief_state
 
 class ToMObserver(nn.Module):
-    """General ToM-style observer combining:
-        - Character embedding from past episodes (classical GRU over summaries)
-        - Mental-state embedding from recent window (classical MLP)
-        - State encoder: classical, quantum, or both
-    Predicts next action distribution (5-way softmax).
+    """General ToM-style observer.
+
+    Inputs
+    ------
+    - char:   (B, char_dim) character summary input
+    - mental: (B, mental_dim) mental-state window input
+    - state:  (B, state_dim) raw state features to be mapped into belief
+
+    Config
+    ------
+    - belief_type: 'classical' | 'classical_matched' | 'quantum' | 'hybrid' | 'hybrid_matched'
+    - n_qubits:    qubits used by quantum/hybrid backends
+
+    Flow
+    ----
+    state --(belief_state)--> belief
+    [char, mental, belief] --concat--> policy head --> logits
     """
     def __init__(self, char_dim=22, mental_dim=17, state_dim=17,
-                 mode: str = "classical", n_qubits: int = 8, device="cpu"):
+                 belief_type: str = "classical", n_qubits: int = 8, device="cpu"):
         super().__init__()
-        assert mode in {"classical", "quantum", "hybrid"}
-        self.mode = mode
+        assert belief_type in {"classical", "quantum", "hybrid", "classical_matched", "hybrid_matched"}
+        self.belief_type = belief_type
         self.device = device
 
         # Character encoder: simple MLP (could be GRU if we kept sequence dims)
@@ -49,32 +52,34 @@ class ToMObserver(nn.Module):
             nn.Linear(char_dim, 64), nn.ReLU(),
             nn.Linear(64, 32), nn.ReLU(),
         )
+        
         # Mental encoder
         self.mental_enc = nn.Sequential(
             nn.Linear(mental_dim, 64), nn.ReLU(),
             nn.Linear(64, 32), nn.ReLU(),
         )
-        # State encoder(s)
-        if mode == "classical":
-            self.state_enc_c = ClassicalStateEncoder(state_dim, hid=64, out=32)
-            fused_dim = 32 + 32 + 32
-        elif mode == "quantum":
-            if not _HAS_PENNYLANE:
-                raise RuntimeError("Quantum mode requires pennylane to be installed.")
-            self.state_enc_q = QuantumEncoder(state_dim, n_qubits=n_qubits, n_layers=2)
-            # keep a small linear head to map qubits -> 32
-            self.q_head = nn.Linear(n_qubits, 32)
-            fused_dim = 32 + 32 + 32
-        else:  # hybrid
-            if not _HAS_PENNYLANE:
-                raise RuntimeError("Hybrid mode requires pennylane to be installed.")
-            self.state_enc_c = ClassicalStateEncoder(state_dim, hid=64, out=32)
-            self.state_enc_q = QuantumEncoder(state_dim, n_qubits=n_qubits, n_layers=2)
-            self.q_head = nn.Linear(n_qubits, 16)
-            self.c_head = nn.Identity()
-            fused_dim = 32 + 32 + (16+32)
+        
+        # Belief state representation
+        if belief_type == "classical":
+            self.belief_state = create_belief_state("classical", state_dim=state_dim)
+            belief_dim = 64  # Classical belief state output dimension
+        elif belief_type == "classical_matched":
+            self.belief_state = create_belief_state("classical_matched", state_dim=state_dim)
+            belief_dim = 32  # Parameter-matched classical belief state output dimension
+        elif belief_type == "quantum":
+            self.belief_state = create_belief_state("quantum", state_dim=state_dim, n_qubits=n_qubits)
+            belief_dim = 32  # Quantum belief state output dimension
+        elif belief_type == "hybrid":
+            self.belief_state = create_belief_state("hybrid", state_dim=state_dim, 
+                                                   classical_dim=32, quantum_qubits=n_qubits//2)
+            belief_dim = 64  # Hybrid belief state output dimension (32 classical + 32 quantum)
+        else:  # hybrid_matched
+            self.belief_state = create_belief_state("hybrid_matched", state_dim=state_dim, 
+                                                   classical_dim=16, quantum_qubits=n_qubits//2)
+            belief_dim = 32  # Parameter-matched hybrid belief state output dimension (16 classical + 16 quantum)
 
-        # Policy head
+        # Policy head: combines character, mental state, and belief state
+        fused_dim = 32 + 32 + belief_dim  # char + mental + belief
         self.head = nn.Sequential(
             nn.Linear(fused_dim, 128), nn.ReLU(),
             nn.Linear(128, 64), nn.ReLU(),
@@ -82,17 +87,24 @@ class ToMObserver(nn.Module):
         )
 
     def forward(self, char, mental, state):
+        """Compute action logits from character, mental, and state inputs.
+
+        The belief-state module consumes `state` and produces a belief
+        embedding whose dimensionality depends on the configured backend.
+        Character and mental encoders are classical MLPs.
+        """
         # Inputs: (B, char_dim), (B, mental_dim), (B, state_dim)
         c = self.char_enc(char)
         m = self.mental_enc(mental)
-        if self.mode == "classical":
-            s = self.state_enc_c(state)
-        elif self.mode == "quantum":
-            s = self.q_head(self.state_enc_q(state))
-        else:
-            sq = self.q_head(self.state_enc_q(state))
-            sc = self.state_enc_c(state)
-            s = torch.cat([sc, sq], dim=-1)
-        x = torch.cat([c, m, s], dim=-1)
+        
+        # Encode state into belief representation
+        belief = self.belief_state(state)
+        
+        # Combine all representations
+        x = torch.cat([c, m, belief], dim=-1)
         logits = self.head(x)
         return logits
+    
+    def get_belief_representation(self, state):
+        """Return the belief-state embedding for a batch of `state` inputs."""
+        return self.belief_state(state)
