@@ -251,6 +251,19 @@ def main():
     parser.add_argument('--device', type=str, default='cpu')
     parser.add_argument('--agent-obs-input', action='store_true',
                         help='Use agent partial observation as model state input instead of observer full-state features')
+    # Agent population controls
+    parser.add_argument('--use-rb-agents', action='store_true',
+                        help='Include rule-based BeliefAgent actors (default: included)')
+    parser.add_argument('--no-rb-agents', action='store_true',
+                        help='Exclude rule-based BeliefAgent actors (default: included)')
+    parser.add_argument('--use-qlearn-agents', action='store_true',
+                        help='Include QLearnAgent actors for dataset rollouts')
+    parser.add_argument('--qlearn-iters', type=int, default=10000,
+                        help='Pre-training iterations per QLearnAgent before rollouts')
+    parser.add_argument('--use-random-agents', action='store_true',
+                        help='Include RandomAgent actors for dataset rollouts')
+    parser.add_argument('--random-alpha', type=str, default='',
+                        help='Dirichlet alpha for RandomAgent. Float (e.g., 1.0) or comma-separated 5 values (e.g., 1,1,1,1,1)')
     parser.add_argument('--save-results', type=str, default='state_encoder_comparison_results.json')
     parser.add_argument('--save-plots', type=str, default='state_encoder_comparison_plots.png')
     parser.add_argument('--use-fixed-results', action='store_true',
@@ -327,14 +340,32 @@ def main():
             ]
     else:
         print("Building rollout datasets...")
+        # Parse random alpha if provided
+        random_alpha = 1.0
+        if args.random_alpha:
+            txt = args.random_alpha.strip()
+            if ',' in txt:
+                random_alpha = [float(x) for x in txt.split(',') if x.strip() != '']
+            else:
+                random_alpha = float(txt)
+        # Resolve which agent types to include
+        use_rb = True
+        if args.no_rb_agents:
+            use_rb = False
+        if args.use_rb_agents:
+            use_rb = True
+
         train_samp, val_samp = build_rollouts(
             num_agents=4,
             episodes_per_agent=args.episodes,
             k_context=3,
             grid=9,
             fov=3,
-            use_rb_agents=True,
-            use_qlearn_agents=False,
+            use_rb_agents=use_rb,
+            use_qlearn_agents=args.use_qlearn_agents,
+            qlearn_iters=args.qlearn_iters,
+            use_random_agents=args.use_random_agents,
+            random_alpha=random_alpha,
             max_steps=60,
             seed=args.seed,
             use_agent_obs_as_state=args.agent_obs_input,
