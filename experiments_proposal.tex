@@ -1,0 +1,67 @@
+\section{Proposed Experiments: Quantum Embeddings for Theory of Mind}
+\label{sec:experiments}
+
+This section proposes a set of experiments to evaluate quantum-inspired and quantum-native embeddings for Theory of Mind (ToM) observers in partially observable grid-worlds. We adopt the term \emph{current context} in place of belief state, reflecting the observer's structured latent representation of recent history and agent-environment interactions. We further consider a \emph{mental net}---the network that performs ToM inference over the current context---and endow it with a quantum (or hybrid) embedding. Our goal is to systematically compare classical, quantum, and hybrid designs along accuracy on ToM tasks (including false-belief and visible sub-tasks), sample efficiency, compute/runtime, and parameter efficiency.
+
+\subsection{Models and Embedding Variants}
+We evaluate three families of embeddings at two loci in the observer: (i) the state encoder that maps raw inputs to a latent state representation, and (ii) the current context module that aggregates across time for ToM inference (the mental net's input). Concretely:
+\begin{itemize}
+  \item \textbf{Classical}: standard neural layers (e.g., MLP/CNN/GRU) for both loci.
+  \item \textbf{Quantum}: parameterized quantum circuits (PQCs) via variational quantum layers for either the state encoder, the current context module, or both. Embeddings use amplitude/angle encodings with trainable rotations and entangling gates.
+  \item \textbf{Hybrid}: classical front- or back-ends with an intervening PQC block, enabling quantum feature maps with classical pre/post-processing.
+\end{itemize}
+
+We instantiate two observer architectures aligned with our existing codebase analyses:
+\begin{enumerate}
+  \item \textbf{Baseline ToM Observer}: mirrors the setup used for current context comparisons (classical vs. quantum vs. hybrid), trained end-to-end under identical data and optimization protocols.
+  \item \textbf{Enhanced ToM Observer}: isolates the \emph{state encoder} to compare classical, quantum, and hybrid encodings while keeping the current context module classical, and then symmetrically flips the setting to endow the \emph{mental net} (current context module) with quantum/hybrid embedding while keeping the state encoder classical.
+\end{enumerate}
+
+\subsection{Tasks and Environment}
+We use the grid-world ToM environment with partial observability and role-diverse agents. Supervision decomposes into:
+\begin{itemize}
+  \item \textbf{Overall accuracy}: aggregate prediction accuracy on ToM queries.
+  \item \textbf{False-belief accuracy}: performance on trials requiring attribution of mistaken perspectives.
+  \item \textbf{Visible accuracy}: performance on trials solvable from currently visible information.
+\end{itemize}
+Datasets are generated via matched rollouts across conditions to ensure comparability (same grid sizes, field-of-view, horizon, agent policies, and random seeds).
+
+\subsection{Experimental Factors and Conditions}
+We propose the following controlled comparisons, grounded in prior analyses:
+\begin{description}
+  \item[Experiment A: Current Context Type (Baseline Observer).] Compare \{classical, quantum, hybrid\} current context modules while holding the state encoder fixed. Measure best validation accuracies (overall, false-belief, visible), training time, per-epoch time, and parameter counts.
+  \item[Experiment B: State Encoder Type (Enhanced Observer).] Compare \{classical, quantum, hybrid\} state encoders with the current context fixed to classical to isolate encoder effects.
+  \item[Experiment C: Quantum Mental Net (Enhanced Observer).] Endow the \emph{mental net}---the module operating over the current context---with a quantum or hybrid embedding, while keeping the state encoder classical. Compare against a fully classical mental net.
+  \item[Experiment D: Dual Quantum Embedding.] Combine a quantum or hybrid state encoder with a quantum or hybrid current context module to probe compositional effects and potential synergies.
+  \item[Experiment E: Qubit Scaling and Circuit Depth.] For quantum/hybrid conditions, vary number of qubits and circuit depth/entanglement topology to characterize scaling trends in accuracy and runtime.
+  \item[Experiment F: Input Modality Control.] Optionally feed the agent’s partial observation directly to the state encoder versus observer-centric full-state features, to test robustness of quantum benefits under input occlusion.
+\end{description}
+
+\subsection{Training Protocol and Early Stopping}
+All conditions use matched optimization hyperparameters (Adam optimizer, learning rate, batch size) and early stopping based on validation accuracy with a fixed patience window. Each run logs per-epoch loss and sub-task accuracies and records the best-epoch snapshot for summary metrics. We perform multiple seeds per condition for mean and confidence intervals.
+
+\subsection{Evaluation Metrics and Reporting}
+We report:
+\begin{itemize}
+  \item \textbf{Best overall, false-belief, and visible accuracies} at validation best-epoch.
+  \item \textbf{Total and per-epoch training time} to assess computational overheads of quantum layers.
+  \item \textbf{Model parameter counts} for parameter-efficiency comparisons.
+  \item \textbf{Sample efficiency curves}: accuracy vs. number of training episodes.
+  \item \textbf{Scaling curves}: accuracy/runtime vs. qubits and circuit depth.
+\end{itemize}
+Visualizations include six-panel summaries (accuracies, times, parameters) and ablations for scaling. Tabular summaries present per-condition metrics with seeds aggregated.
+
+\subsection{Hypotheses}
+\begin{itemize}
+  \item \textbf{H1 (False-belief sensitivity)}: quantum and hybrid current context modules improve false-belief accuracy due to richer interference-enabled feature maps over temporally aggregated observations.
+  \item \textbf{H2 (Hybrid efficiency)}: hybrid embeddings achieve similar or better accuracy than pure quantum at reduced runtime and parameter budgets.
+  \item \textbf{H3 (Mental net advantage)}: applying quantum/hybrid embeddings to the mental net yields greater gains than applying them solely to the state encoder, reflecting benefits when operating directly over aggregated current context.
+  \item \textbf{H4 (Compositional synergy)}: dual quantum embeddings (encoder + current context) exhibit super-additive improvements for challenging ToM configurations.
+  \item \textbf{H5 (Scaling)}: increasing qubits and entanglement depth initially improves accuracy with diminishing returns and rising compute costs.
+\end{itemize}
+
+\subsection{Reproducibility and Ablations}
+All experiments fix seeds, dataset generation parameters, and training hyperparameters across conditions. We ablate: encoder-only quantum vs. mental-net-only quantum; entanglement patterns; input modality; and patience/early-stopping settings. Where quantum toolchains are unavailable, we provide classical baselines and a hybrid fallback; plots can be reproduced from fixed JSON result files.
+
+\subsection{Expected Outcomes and Impact}
+If validated, these experiments will demonstrate that quantum or hybrid embeddings over the \emph{current context} and within the \emph{mental net} provide measurable benefits on ToM tasks, particularly those requiring counterfactual perspective-taking (false beliefs), while quantifying the compute trade-offs and parameter efficiencies that make such methods practical in resource-constrained settings.

@@ -1,0 +1,35 @@
+graph TD
+  %% Quantum embedding as implemented in src/models/* (PennyLane)
+  q0["Classical input x ∈ R^{in_dim}"] --> lin["Linear projection: R^{in_dim} → R^{n_qubits}"]
+  lin --> ae["AngleEmbedding(inputs) on wires 0..n_qubits-1"]
+
+  subgraph VQC["Variational quantum circuit"]
+    direction LR
+    ae --> sel["StronglyEntanglingLayers (L layers)"]
+    w["Trainable weights shape: (L, n_qubits, 3)"]
+    sel --- w
+  end
+
+  sel --> meas["Measure expectations ⟨Z_i⟩ for i = 0..n_qubits-1"]
+  meas --> z["z ∈ R^{n_qubits}"]
+  z --> mlp["Classical post-MLP: n_qubits → 64 → output_dim (ReLU, Tanh)"]
+  mlp --> out["Quantum embedding z_q ∈ R^{output_dim}"]
+
+graph TB
+  s["Classical state s ∈ R^{state_dim}"] --> proj["Linear projection: R^{state_dim} → R^{n_qubits}"]
+  proj --> ae["AngleEmbedding(inputs) on wires 0..n_qubits-1"]
+
+  subgraph VQC["Variational quantum circuit (trainable)"]
+    direction LR
+    ae --> sel["StronglyEntanglingLayers (L layers)"]
+    noteW["Trainable weights shape: (L, n_qubits, 3)"]
+    sel --- noteW
+  end
+
+  sel --> meas["Measure expectation values ⟨Z_i⟩ for i = 0..n_qubits-1"]
+  meas --> zvec["z ∈ R^{n_qubits}"]
+  zvec --> mlp["Post-process MLP: n_qubits → 64 → 32 (ReLU, Tanh)"]
+  mlp --> belief["Quantum belief b(s) ∈ R^{32}"]
+
+
+

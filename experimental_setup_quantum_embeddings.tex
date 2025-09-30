@@ -1,0 +1,79 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{bm}
+\usepackage{geometry}
+\usepackage{hyperref}
+\geometry{margin=1in}
+
+\title{Quantum Embeddings in the Gridworld ToM Experiments: Concepts and Experimental Setup}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Quantum-Mechanical Overview}
+
+We summarize the quantum feature-map formalism leveraged in our experiments, following the notation and exposition in the accompanying \texttt{quantum\_embedding.tex}.
+
+\paragraph{Data-to-state map.} A quantum embedding is a map \(\Phi: \mathcal{X} \to \mathcal{H}\) taking classical inputs \(x\in\mathcal{X}\subseteq\mathbb{R}^d\) to normalized quantum states \(\lvert\psi(x)\rangle = U_\phi(x)\lvert 0\rangle^{\otimes n}\) in an \(n\)-qubit Hilbert space \(\mathcal{H}\cong(\mathbb{C}^2)^{\otimes n}\). The unitary encoder \(U_\phi(x)\) implements the feature map.
+
+\paragraph{Measurement-induced features.} Classical representations are obtained as expectation values of bounded Hermitian observables \(\{M_j\}_{j=1}^m\):
+\begin{align}
+  f(x) = \big(\langle\psi(x)\rvert M_1\lvert\psi(x)\rangle,\ldots,\langle\psi(x)\rvert M_m\lvert\psi(x)\rangle\big) \in [-1,1]^m.
+\end{align}
+This provides a nonlinear feature map induced by the quantum state.
+
+\paragraph{Encoding families.} We use angle (parameter) encoding with entangling layers: inputs are first linearly projected to \(n\) qubits, then embedded via single-qubit rotations and trainable entanglers. Alternative families include basis, amplitude, and IQP-style encodings.
+
+\paragraph{Quantum kernels.} The embedding induces inner-product kernels \(k(x,x')=\langle\psi(x)\mid\psi(x')\rangle\) and fidelity kernels \(k_\mathrm{F}(x,x')=|\langle\psi(x)\mid\psi(x')\rangle|^2\), supporting an RKHS view of linear learning in embedded space.
+
+\paragraph{Geometry and trainability.} The pullback of the Fubini--Study metric governs sensitivity of features to inputs; the quantum Fisher information (QFIM) characterizes parameter identifiability in variational encoders. Shallow, structured circuits with locality-controlled entanglement mitigate gradient concentration (barren plateaus).
+
+\section{How These Embeddings Are Used in Our Setup}
+
+Our models integrate quantum encoders as drop-in state and belief-state modules within an Enhanced Theory-of-Mind (ToM) observer. Implementations are in \texttt{src/models/enhanced\_tom\_observer.py} and \texttt{src/models/quantum\_layer.py}.
+
+\subsection{Encoder architecture}
+
+We use a variational layer constructed with PennyLane (when available): inputs of dimension \(d\) are projected to \(n\) qubits, angle-embedded, passed through \(L\) layers of \texttt{StronglyEntanglingLayers}, and measured in the Pauli-$Z$ basis on each qubit. Formally, for a batch element,
+\begin{align}
+  z &= W x + b \in \mathbb{R}^{n},\\
+  \lvert\psi(x;\bm{\theta})\rangle &= \Big[\mathcal{E}_{\text{ent}}(\bm{\theta})\cdot \mathrm{AngleEmb}(z)\Big]\lvert 0\rangle^{\otimes n},\\
+  h(x) &= \big(\langle\psi\rvert Z_1\lvert\psi\rangle,\ldots,\langle\psi\rvert Z_n\lvert\psi\rangle\big) \in [-1,1]^n,
+\end{align}
+where \(\bm{\theta}\) parameterizes the entangling layers. This is precisely the interface implemented by \texttt{QuantumEncoder} in \texttt{quantum\_layer.py} and by the quantum components of \texttt{QuantumStateEncoder}/\texttt{QuantumBeliefState} in \texttt{enhanced\_tom\_observer.py}.
+
+\subsection{Roles in the ToM observer}
+
+- \textbf{State encoder}: Maps raw environment state features (default 17 dims) to a compact embedding (32 dims). Variants: classical MLP, quantum encoder, and a hybrid that concatenates classical and quantum pathways.
+
+- \textbf{Belief-state encoder}: Consumes the state embedding to produce a belief representation (32 dims), again in classical, quantum, or hybrid forms. In the quantum case, the belief encoder re-embeds the state features with a separate variational circuit.
+
+- \textbf{Policy head}: Concatenates character, mental window, encoded state, and belief vectors, and predicts action logits. Thus, the quantum modules influence the policy through their nonlinear measurement features.
+
+\subsection{Justification and inductive biases}
+
+- \textbf{Nonlinearity with structure}: Angle-encoded circuits with entanglers implement multiplicative, trigonometric feature interactions whose spectra grow with depth and connectivity, yielding rich but controlled nonlinearities in small models.
+
+- \textbf{Regularization via bounded outputs}: Pauli-$Z$ expectations are naturally bounded in \([-1,1]\), stabilizing optimization and downstream fusion with classical heads.
+
+- \textbf{Trainability considerations}: We use shallow depths (typically \(L\leq 2\)) and moderate qubit counts (e.g., 6--8) to avoid barren plateaus while still capturing higher-order interactions across input dimensions.
+
+- \textbf{Complementarity in hybrids}: Hybrid encoders fuse classical features with quantum features, leveraging complementary inductive biases and improving expressivity without excessive depth.
+
+- \textbf{Kernel perspective}: The circuits define an implicit quantum kernel; even when trained end-to-end, their geometry biases the model toward functions with smoothness dictated by the pullback metric, aiding generalization in low-data regimes.
+
+\subsection{Practical configuration}
+
+- \textbf{Inputs}: State features (17 dims) are linearly projected to \(n\) qubits. Belief encoders take the 32-dim state embedding as input.
+
+- \textbf{Quantum blocks}: \texttt{AngleEmbedding} followed by \texttt{StronglyEntanglingLayers} with trainable weights; outputs are per-qubit \(\langle Z\rangle\) expectations, post-processed by small MLPs to target dimensions.
+
+- \textbf{Resource profile}: Simulation uses \texttt{default.qubit}. Depth and wire counts are kept modest to ensure tractable training time on CPU/GPU while providing meaningful nonlinear uplift over classical baselines.
+
+\section{Summary}
+
+We encode classical gridworld signals into quantum states via shallow, entangling angle-embedding circuits and extract bounded measurement features. These modules serve as state and belief encoders within a ToM observer, either alone or in hybrid with classical pathways. The approach provides structured nonlinear representations with favorable trainability and a kernel/RKHS interpretation that justifies their use under limited data and the need for expressive yet regularized embeddings.
+
+\end{document}

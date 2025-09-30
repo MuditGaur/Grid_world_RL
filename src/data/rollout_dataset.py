@@ -25,7 +25,7 @@ import torch
 from torch.utils.data import Dataset
 
 from ..environment import Gridworld, StepRec, STAY
-from ..agents import BeliefAgent, QLearnAgent
+from ..agents import BeliefAgent, QLearnAgent, RandomAgent
 
 class RolloutDataset(Dataset):
     """Build context/query samples for ToM-style observer training.
@@ -57,6 +57,8 @@ class RolloutDataset(Dataset):
 
 def build_rollouts(num_agents: int, episodes_per_agent: int, k_context: int,
                    grid=9, fov=3, use_rb_agents=True, use_qlearn_agents=False,
+                   use_random_agents: bool = False,
+                   random_alpha: float | list[float] = 1.0,
                    qlearn_iters=10000, max_steps=80, seed=1234,
                    p_swap: float = 0.25, swap_window: int = 10,
                    force_swap: bool = False, force_swap_at_step: int | None = None,
@@ -73,6 +75,9 @@ def build_rollouts(num_agents: int, episodes_per_agent: int, k_context: int,
             agents.append((f"RB_{i}", BeliefAgent(pref, fov=fov, n=grid)))
         if use_qlearn_agents:
             agents.append((f"QL_{i}", QLearnAgent(pref, n=grid, fov=fov)))
+        if use_random_agents:
+            # Random agents do not use preferred_kind functionally, but keep naming parity
+            agents.append((f"RN_{i}", RandomAgent(alpha=random_alpha)))
 
     # optional: pre-train Q-learning agents
     if use_qlearn_agents:

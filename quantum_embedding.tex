@@ -1,0 +1,192 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{bm}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\title{Quantum Embeddings: Formal Definitions, Geometry, and Kernels}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+Quantum embeddings are ways of turning ordinary (classical) data into quantum states using quantum circuits. Intuitively, the circuit "lifts" the data into a very high-dimensional, curved space where simple operations (like taking inner products or measuring observables) correspond to rich, highly nonlinear transformations of the original inputs. From these embedded quantum states, we either extract numerical features by measuring expectation values, or we work implicitly with their inner products (``quantum kernels'') without ever writing features down explicitly. This makes quantum embeddings useful as drop-in replacements for feature maps in machine learning pipelines, especially when we want powerful nonlinear representations with controllable inductive biases and potential quantum advantages.
+
+Potential uses include: (i) classification and regression via quantum kernels or measured features; (ii) representation learning, where quantum circuits act as learnable encoders; (iii) hybrid quantum--classical models, in which quantum embeddings feed classical neural heads; (iv) tasks requiring symmetry, locality, or compositional biases that can be enforced by circuit architecture; and (v) scientific learning where quantum states provide natural coordinates (e.g., for systems with wavefunction-like structure).
+
+This document is organized to move from definitions to geometry to practice:
+\begin{itemize}
+  \item \textbf{Quantum Embeddings as Feature Maps}: gives the precise notion of a data-to-state map and how measurements produce classical features.
+  \item \textbf{Encoding Families}: catalogs common circuit-based encoders (basis, amplitude, angle/IQP), clarifying their costs and inductive biases.
+  \item \textbf{Quantum Kernels and RKHS View}: links embeddings to kernel methods and linear learning in reproducing kernel Hilbert spaces.
+  \item \textbf{Differential Geometry of Embeddings}: explains the pullback of the Fubini--Study metric and the quantum Fisher information, which control sensitivity and identifiability.
+  \item \textbf{Expressivity, Concentration, and Trainability}: discusses when embeddings are rich enough, and when gradients vanish (barren plateaus) without architectural care.
+  \item \textbf{Resource and Statistical Considerations}: outlines gate/shot complexity and practical estimation issues for features and kernels.
+  \item \textbf{Examples}: provides concrete encoder/kernalized constructions to anchor the formalism.
+  \item \textbf{Desiderata for Quantum Embeddings}: summarizes properties practitioners typically aim for (discriminativity, stability, inductive bias, trainability).
+  \item \textbf{Application to State and Belief-State Encodings}: shows how these embeddings instantiate the state and belief modules used in downstream models.
+\end{itemize}
+
+\section{Quantum Embeddings as Feature Maps}
+
+Let \(\mathcal{X}\subseteq\mathbb{R}^d\) be a data domain. A \emph{quantum embedding} is a (generally nonlinear) feature map
+\begin{align}
+  \Phi: \mathcal{X} \to \mathcal{H},\qquad x\mapsto \lvert \psi(x) \rangle,\label{eq:featuremap}
+\end{align}
+where \(\mathcal{H}\) is a complex Hilbert space of an \(n\)-qubit system with inner product \(\langle \cdot \mid \cdot \rangle\), i.e., \(\mathcal{H}\cong (\mathbb{C}^2)^{\otimes n}\). We require normalization \(\lVert\psi(x)\rVert_2=1\). Equivalently, one may regard the embedding as a map into the quantum state manifold (pure states)
+\begin{align}
+  \Phi: \mathcal{X} \to \mathbb{CP}^{2^n-1},\qquad x\mapsto [\psi(x)],
+\end{align}
+where \([\psi]\) denotes the complex projective equivalence class of \(\lvert \psi\rangle\) up to global phase.
+
+Operationally, \(\Phi\) is implemented by a unitary data-encoding channel \(\mathcal{U}_\phi(x)\) acting on a fixed reference state, typically \(\lvert 0\rangle^{\otimes n}\):
+\begin{align}
+  \lvert \psi(x) \rangle 
+  = U_\phi(x) \lvert 0 \rangle^{\otimes n},
+  \qquad U_\phi(x)\in \mathrm{SU}(2^n).\label{eq:unitary-embedding}
+\end{align}
+The embedding may be combined with trainable parameters \(\bm{\theta}\) via a variational ansatz \(U_{\bm{\theta}}\), yielding composite encoders \(x\mapsto U_{\bm{\theta}} U_\phi(x) \lvert 0\rangle^{\otimes n}\).
+
+\paragraph{Measurement-induced classical features.}
+Given Hermitian observables \(\{M_j\}_{j=1}^m\) with \(\lVert M_j\rVert\le 1\), one obtains a classical feature vector
+\begin{align}
+  f(x) 
+  = \big( \langle \psi(x) \rvert M_1 \lvert \psi(x) \rangle,\dots, \langle \psi(x) \rvert M_m \lvert \psi(x) \rangle \big)
+  \in [-1,1]^m.\label{eq:meas-features}
+\end{align}
+The mapping \(x\mapsto f(x)\) factors through \(\Phi\) and is thus a classical representation induced by a quantum feature map.
+
+\section{Encoding Families}
+
+Let \(x\in\mathbb{R}^d\). Common choices for \(U_\phi(x)\) include:
+\begin{itemize}
+  \item \textbf{Basis (computational) encoding}: injective embedding of discrete \(x\) into computational basis states, \(\lvert \psi(x)\rangle = \lvert x\rangle\), requiring \(2^n\ge \#\{x\}\).
+  \item \textbf{Amplitude encoding}: encode normalized amplitudes \(x/\lVert x\rVert\) into state vector,
+  \begin{align}
+    \lvert \psi(x) \rangle 
+    = \sum_{i=0}^{2^n-1} \alpha_i(x)\, \lvert i \rangle,
+    \quad \sum_i |\alpha_i(x)|^2 = 1.
+  \end{align}
+  In general, efficient state preparation requires structured \(\alpha_i(x)\) or ancillary resources.
+  \item \textbf{Angle (parameter) encoding}: encode \(x\) into single- or multi-qubit rotations, e.g.,
+  \begin{align}
+    U_\phi(x) 
+    = \Big( \bigotimes_{q=1}^n R_{a_q}(w_q^\top x + b_q) \Big) \cdot \mathcal{E}_{\text{ent}},
+  \end{align}
+  where \(a_q\in\{x,y,z\}\) selects an axis, \(w_q\in\mathbb{R}^d\), and \(\mathcal{E}_{\text{ent}}\) is an entangling layer (e.g., CZ/CNOT ladder). Layered constructions yield feature maps with controllable expressivity.
+  \item \textbf{IQP/feature-unitary maps}: data rephasing by diagonal unitaries in the computational basis followed by Hadamards and entanglers, often used in quantum kernel constructions.
+\end{itemize}
+
+\section{Quantum Kernels and RKHS View}
+
+The feature map \(\Phi\) induces the \emph{quantum kernel}
+\begin{align}
+  k(x,x') 
+    &= \langle \psi(x) \mid \psi(x') \rangle \in \mathbb{C},
+  \qquad k_\mathrm{F}(x,x') = |\langle \psi(x) \mid \psi(x') \rangle|^2 \in [0,1],\label{eq:kernel}
+\end{align}
+where \(k\) is Hermitian positive semidefinite and \(k_\mathrm{F}\) is the fidelity kernel. These kernels define reproducing kernel Hilbert spaces (RKHS) \(\mathcal{H}_k\) with canonical feature map \(x\mapsto k(\cdot,x)\). Learning with quantum kernels corresponds to linear estimation in the RKHS induced by \(\Phi\).
+
+Kernel estimation can be carried out on quantum hardware via the \emph{overlap} (swap test) or via classical simulation/analytics for special \(U_\phi\). Generalization can be analyzed using RKHS norms, e.g., with bounds scaling with the effective dimension
+\begin{align}
+  d_\mathrm{eff}(\lambda) 
+  = \mathrm{Tr}\big( K(K+\lambda I)^{-1} \big),
+\end{align}
+where \(K\) is the empirical kernel matrix.
+
+\section{Differential Geometry of Embeddings}
+
+The image of \(\Phi\) inherits the Fubini--Study metric from projective space. Let \(\partial_i = \partial/\partial x_i\). The pullback metric on \(\mathcal{X}\) is
+\begin{align}
+  g_{ij}(x) 
+  &= \mathrm{Re}\Big( \langle \partial_i \psi \mid \partial_j \psi \rangle 
+      - \langle \partial_i \psi \mid \psi \rangle \langle \psi \mid \partial_j \psi \rangle \Big).\label{eq:fs}
+\end{align}
+For a parameterized family \(\lvert \psi(x;\bm{\theta})\rangle\), the quantum Fisher information matrix (QFIM) with respect to \(\bm{\theta}\) is
+\begin{align}
+  \mathcal{F}_{\alpha\beta}(x;\bm{\theta})
+  = 4\,\mathrm{Re}\Big( \langle \partial_\alpha \psi \mid \partial_\beta \psi \rangle 
+      - \langle \partial_\alpha \psi \mid \psi \rangle \langle \psi \mid \partial_\beta \psi \rangle \Big),
+\end{align}
+which governs local distinguishability and informs trainability. The induced geometry constrains Lipschitz constants of measurement features via the Cauchy--Schwarz inequality and governs curvature-dependent concentration.
+
+\section{Expressivity, Concentration, and Trainability}
+
+\paragraph{Expressivity.} A family \(\{U_\phi(x)\}\) is said to be \emph{expressive} if the orbit \(\{ U_\phi(x) \lvert 0 \rangle \colon x\in\mathcal{X}\}\) is \(\varepsilon\)-dense in a target submanifold of \(\mathbb{CP}^{2^n-1}\) with respect to the Fubini--Study metric. Layered encoders that approximate unitary \(t\)-designs yield near-uniform coverage but can induce gradient concentration.
+
+\paragraph{Concentration.} For deep random encoders, overlaps \(\lvert\langle \psi(x)\mid\psi(x')\rangle\rvert^2\) concentrate around \(1/2^n\), and gradients exhibit \emph{barren plateaus}, i.e., exponentially vanishing variance with \(n\) or depth. Controlled entanglement, locality, or problem-informed \(U_\phi\) mitigate this.
+
+\paragraph{Trainability.} For composite encoders \(U_{\bm{\theta}} U_\phi(x)\), gradient magnitudes \(\partial L/\partial \bm{\theta}\) relate to the QFIM and to commutators \([H_\alpha, U_\phi(x)]\) for generators \(H_\alpha\) of the parametrized gates. Data-reuploading (multiple insertions of \(U_\phi(x)\)) increases expressivity while maintaining trainability for bounded depth.
+
+\section{Resource and Statistical Considerations}
+
+\paragraph{State-preparation cost.} Amplitude encoding is information-efficient (\(d\le 2^n\)) but may require \(\mathcal{O}(2^n)\) gates in general. Angle encodings implement \(\mathcal{O}(nd)\) single-qubit rotations plus entanglers per layer.
+
+\paragraph{Shot complexity.} Estimating \(m\) expectation values (Eq.~\eqref{eq:meas-features}) within additive error \(\epsilon\) with confidence \(1-\delta\) requires \(\mathcal{O}(m\,\epsilon^{-2}\log(1/\delta))\) samples (Hoeffding/Chernoff), up to observable variance factors.
+
+\paragraph{Kernel estimation.} Overlap estimation via the swap test or Hadamard tests has variance scaling set by fidelity; low overlaps demand more shots. For IQP-type encoders, classical surrogates of the kernel are sometimes tractable.
+
+\section{Examples}
+
+\paragraph{Angle embedding with entanglers.} Let \(W\in\mathbb{R}^{n\times d}\), \(b\in\mathbb{R}^n\). Define
+\begin{align}
+  U_\phi(x) 
+  = \Big( \prod_{\ell=1}^L \Big[ \mathcal{E}_{\text{ent}}^{(\ell)} \cdot \bigotimes_{q=1}^n R_y\big((Wx+b)_q\big) \Big] \Big),
+\end{align}
+with \(\mathcal{E}_{\text{ent}}^{(\ell)} = \prod_{q=1}^{n-1} \mathrm{CNOT}_{q,q+1}\). Then
+\begin{align}
+  k(x,x') = \langle 0 \rvert^{\otimes n} U_\phi(x)^{\dagger} U_\phi(x') \lvert 0 \rangle^{\otimes n}
+\end{align}
+is a valid quantum kernel; its Fourier spectrum contains harmonics determined by \(W\) and by the entangling pattern.
+
+\paragraph{Measurement features.} With local Pauli observables \(M_j=Z_j\) and depth-\(L\) encoder above, the \(j\)-th feature equals
+\begin{align}
+  f_j(x) = \langle \psi(x) \rvert Z_j \lvert \psi(x) \rangle = \cos(\vartheta_j(x))\prod_{q\in N(j)}\cos(\eta_{jq}(x)),
+\end{align}
+for data-dependent angles \(\vartheta_j,\eta_{jq}\) induced by the circuit and neighborhood \(N(j)\) from entanglers (schematic form), illustrating nonlinear multiplicative interactions.
+
+\section{Desiderata for Quantum Embeddings}
+
+For effective representation learning, one seeks:
+\begin{itemize}
+  \item \emph{Discriminativity}: large inter-class geodesic distances (Fubini--Study) after embedding.
+  \item \emph{Stability}: bounded pullback metric \(g\) to control sensitivity to input perturbations.
+  \item \emph{Inductive bias}: symmetries encoded via data-equivariant unitaries (e.g., translation via shared rotations/commuting layers).
+  \item \emph{Trainability}: non-degenerate QFIM; avoidance of barren plateaus via locality, shallow depth, or structured ans\"atze.
+\end{itemize}
+
+\section{Application to State and Belief-State Encodings}
+
+Let \(x_s\in\mathbb{R}^{d_s}\) denote a classical state input. A quantum \emph{state encoder} is specified by a data-encoding unitary and a set of observables
+\begin{align}
+  &U^{\mathrm{S}}_\phi: \mathbb{R}^{d_s}\to \mathrm{SU}(2^{n_s}),\quad x_s\mapsto U^{\mathrm{S}}_\phi(x_s),\\
+  &\lvert \psi_{\mathrm{S}}(x_s)\rangle = U^{\mathrm{S}}_\phi(x_s)\,\lvert 0\rangle^{\otimes n_s},\quad
+  h_{\mathrm{S}}(x_s) = \big( \langle \psi_{\mathrm{S}}(x_s) \rvert M^{\mathrm{S}}_j \lvert \psi_{\mathrm{S}}(x_s) \rangle \big)_{j=1}^{m_s} \in \mathbb{R}^{m_s},
+\end{align}
+with bounded Hermitian \(M^{\mathrm{S}}_j\). The induced kernel
+\begin{align}
+  k_{\mathrm{S}}(x_s,x'_s)=\langle \psi_{\mathrm{S}}(x_s)\mid\psi_{\mathrm{S}}(x'_s)\rangle
+\end{align}
+defines an RKHS governing linear separability of encoded states. The pullback metric of \(\Phi_{\mathrm{S}}:x_s\mapsto[\psi_{\mathrm{S}}(x_s)]\) controls sensitivity: \(g^{\mathrm{S}} = \Phi_{\mathrm{S}}^* g_{\mathrm{FS}}\).
+
+Let \(z\in\mathbb{R}^{p}\) denote the belief input, either \(z=x_s\) (direct) or \(z=h_{\mathrm{S}}(x_s)\) (stacked). A quantum \emph{belief encoder} is
+\begin{align}
+  &U^{\mathrm{B}}_\phi: \mathbb{R}^{p}\to \mathrm{SU}(2^{n_b}),\quad z\mapsto U^{\mathrm{B}}_\phi(z),\\
+  &\lvert \psi_{\mathrm{B}}(z)\rangle = U^{\mathrm{B}}_\phi(z)\,\lvert 0\rangle^{\otimes n_b},\quad
+  b(z) = \big( \langle \psi_{\mathrm{B}}(z) \rvert M^{\mathrm{B}}_\ell \lvert \psi_{\mathrm{B}}(z) \rangle \big)_{\ell=1}^{m_b} \in \mathbb{R}^{m_b},
+\end{align}
+with kernel \(k_{\mathrm{B}}(z,z')=\langle \psi_{\mathrm{B}}(z)\mid\psi_{\mathrm{B}}(z')\rangle\). The combined feature \([h_{\mathrm{S}}(x_s)\,\|\,b(z)]\) lies in the direct-sum RKHS with kernel \(k_{\mathrm{S}}+k_{\mathrm{B}}\) under linear heads.
+
+Variational augmentation inserts trainable unitaries \(U^{\mathrm{S}}_{\bm{\theta}},U^{\mathrm{B}}_{\bm{\eta}}\):
+\begin{align}
+  h_{\mathrm{S}}(x_s;\bm{\theta}) &= \big( \langle 0 \rvert U^{\mathrm{S}}_\phi(x_s)^{\dagger} U^{\mathrm{S}}_{\bm{\theta}}(\bm{\lambda}_j)^{\dagger} M^{\mathrm{S}}_j U^{\mathrm{S}}_{\bm{\theta}}(\bm{\lambda}_j) U^{\mathrm{S}}_\phi(x_s) \lvert 0 \rangle \big)_{j=1}^{m_s},\\
+  b(z;\bm{\eta}) &= \big( \langle 0 \rvert U^{\mathrm{B}}_\phi(z)^{\dagger} U^{\mathrm{B}}_{\bm{\eta}}(\bm{\mu}_\ell)^{\dagger} M^{\mathrm{B}}_\ell U^{\mathrm{B}}_{\bm{\eta}}(\bm{\mu}_\ell) U^{\mathrm{B}}_\phi(z) \lvert 0 \rangle \big)_{\ell=1}^{m_b},
+\end{align}
+and yields a block QFIM \(\mathcal{F}=\mathcal{F}^{\mathrm{S}}\oplus\mathcal{F}^{\mathrm{B}}\) when parameter sets decouple, certifying local identifiability.
+
+\end{document}
+
+

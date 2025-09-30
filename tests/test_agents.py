@@ -5,7 +5,7 @@ Tests for the agents module.
 import pytest
 import numpy as np
 from src.environment import Gridworld
-from src.agents import BeliefAgent, QLearnAgent
+from src.agents import BeliefAgent, QLearnAgent, RandomAgent
 
 class TestBeliefAgent:
     def test_initialization(self):
@@ -88,6 +88,33 @@ class TestQLearnAgent:
         
         total_reward = agent.train_episode(env, iters=10)
         assert isinstance(total_reward, float)
+
+
+class TestRandomAgent:
+    def test_initialization(self):
+        agent = RandomAgent(alpha=0.5)
+        assert agent.last_action == 4
+
+    def test_reset_and_act(self):
+        env = Gridworld(n=9, fov=3)
+        env.reset()
+        agent = RandomAgent(alpha=[1,1,1,1,1])
+        agent.reset(env)
+        a = agent.act(env)
+        assert a in [0,1,2,3,4]
+        assert agent.last_action == a
+
+    def test_alpha_fn(self):
+        env = Gridworld(n=9, fov=3)
+        env.reset()
+        def alpha_policy(e):
+            return [2,2,2,2,5]
+        agent = RandomAgent(alpha_fn=alpha_policy)
+        # sample multiple times to ensure valid
+        agent.reset(env)
+        for _ in range(10):
+            a = agent.act(env)
+            assert a in [0,1,2,3,4]
 
 if __name__ == "__main__":
     pytest.main([__file__])

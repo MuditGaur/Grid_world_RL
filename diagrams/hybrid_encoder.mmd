@@ -1,0 +1,36 @@
+graph TB
+  s["Classical state s ∈ R^{state_dim}"]
+
+  %% Classical branch
+  s --> cmlp["Classical belief MLP (via ClassicalBeliefState):\nstate_dim → 64 → 32 (ReLU, Tanh)"]
+  cmlp --> bclass["b_class(s) ∈ R^{classical_dim}"]
+
+  %% Quantum branch
+  s --> proj["Linear projection: R^{state_dim} → R^{n_qubits}"]
+  proj --> ae["AngleEmbedding(inputs) on wires 0..n_qubits-1"]
+
+  subgraph VQC["Variational quantum circuit (trainable)"]
+    direction LR
+    ae --> sel["StronglyEntanglingLayers (L layers)"]
+    noteW["Trainable weights: (L, n_qubits, 3)"]
+    sel --- noteW
+  end
+
+  sel --> meas["Measure expectation values ⟨Z_i⟩ for i = 0..n_qubits-1"]
+  meas --> zvec["z ∈ R^{n_qubits}"]
+  zvec --> qmlp["Quantum post-MLP: n_qubits → 64 → 32 (ReLU, Tanh)"]
+  qmlp --> bquant["b_quant(s) ∈ R^{32}"]
+
+  %% Fusion
+  bclass --> concat
+  bquant --> concat
+  concat["Concatenate [b_class || b_quant] ∈ R^{classical_dim+32}"] --> fusion["Fusion MLP: (classical_dim+32) → 64 → (classical_dim+32) (ReLU, Tanh)"]
+  fusion --> belief["Hybrid belief b_hybrid(s) ∈ R^{classical_dim+32}"]
+
+  %% Optional belief update step
+  belief -.-> upd_cat["Concatenate with state: [b_hybrid || s] ∈ R^{classical_dim+32+state_dim}"]
+  upd_cat -.-> upd["Belief update MLP: → 64 → (classical_dim+32) (ReLU, Tanh)"]
+  upd -.-> belief_updated["Updated hybrid belief"]
+
+
+

@@ -1,0 +1,183 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{bm}
+\usepackage{geometry}
+\usepackage{mathtools}
+\geometry{margin=1in}
+
+\title{Quantum Embedding in the Enhanced ToM Observer: A Formal Description}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Key Idea and Reading Guide}
+
+The central idea of this paper is the use of a quantum embedding applied to both the \emph{state encoder} and the \emph{belief encoder} in the Enhanced ToM observer. Classical inputs are mapped to quantum states via angle encoding, processed by shallow variational entangling layers, and read out via bounded Pauli-$Z$ expectations that are then post-processed by small MLPs. The next section provides a concise overview of the terminology and notation needed to understand these embeddings; subsequent sections formalize the pipeline and its integration into the observer.
+
+\section{Terminology and Notation}
+
+This section defines the main quantum concepts and the symbols we use. Each item includes a short, plain-language explanation.
+
+\begin{itemize}
+  \item \textbf{Qubit}: The quantum analogue of a classical bit. While a bit is either 0 or 1, a qubit can be in a \emph{superposition} $\alpha\,|0\rangle + \beta\,|1\rangle$ where $\alpha,\beta\in\mathbb{C}$ and $|\alpha|^2+|\beta|^2=1$. Multiple qubits form a joint system whose state lives in the tensor-product space $\mathcal{H} \cong (\mathbb{C}^2)^{\otimes n}$. This exponential state space is what gives quantum models their representational power.
+  \item \textbf{Ket/Bra Notation}: A state vector is written as a \emph{ket} $|\psi\rangle$; its conjugate transpose is the \emph{bra} $\langle\psi|$. Their product $\langle\phi|\psi\rangle$ is an inner product that measures overlap (similarity) between states. Probabilities of outcomes and expectation values are computed using this notation.
+  \item \textbf{Unitary $U$}: A linear transformation on states that preserves lengths and angles ($U^\dagger U = I$, where $\dagger$ means "conjugate transpose"). Quantum gates and time evolution are modeled by unitary operators, which means they are reversible and do not lose information. We often restrict to $\mathrm{SU}(2^n)$ (unit determinant) for technical convenience.
+  \item \textbf{Rotation Gates} $R_a(\theta)$: Single-qubit gates that rotate the state around a chosen axis $a\in\{x,y,z\}$ on the \emph{Bloch sphere} (a geometric picture of qubit states). They are defined by
+  \begin{equation*}
+    R_a(\theta) = e^{-i\,\theta\,\sigma_a/2},\quad \sigma_x = \begin{pmatrix}0&1\\1&0\end{pmatrix},\;\sigma_y=\begin{pmatrix}0&-i\\ i&0\end{pmatrix},\;\sigma_z=\begin{pmatrix}1&0\\0&-1\end{pmatrix}.
+  \end{equation*}
+  Intuitively, the angle $\theta$ is how far you “twist” the qubit around axis $a$, changing the superposition coefficients $\alpha,\beta$.
+  \item \textbf{Entanglement}: A uniquely quantum correlation between qubits. An entangled multi-qubit state cannot be written as a simple product of single-qubit states. Entanglement lets the circuit represent complex, joint patterns across features, which is crucial for expressive embeddings.
+  \item \textbf{Ansatz / Variational Circuit} $U_{\bm{\theta}}$: A parameterized circuit with learnable parameters $\bm{\theta}$. In practice we stack layers of local rotations and entangling gates (e.g., \texttt{StronglyEntanglingLayers}) to mix information across qubits. During training, $\bm{\theta}$ is tuned to produce features that help the downstream task.
+  \item \textbf{Angle (Parameter) Encoding}: A simple and hardware-friendly way to load real numbers into a circuit. Each input value is turned into a rotation angle applied to a specific qubit. This directly influences the quantum state amplitudes and, after the variational circuit, changes the measured features.
+  \item \textbf{Observable / Measurement}: An \emph{observable} is a Hermitian matrix $M=M^\dagger$ describing a measurable quantity. The ideal measurement outcome (in expectation) on state $|\psi\rangle$ is $\langle M \rangle = \langle\psi|M|\psi\rangle$. Here we use local Pauli-$Z$ operators $Z_j$ (one per qubit), producing a real number in $[-1,1]$ from each qubit and thus a feature vector in $\mathbb{R}^{n_q}$.
+  \item \textbf{Expectation Estimation (Shots)}: On real hardware you do not get the expectation directly; you repeat the circuit many times (\emph{shots}) and average the outcomes. More shots mean less noise in the average. In simulation, expectations can be computed exactly without sampling noise.
+  \item \textbf{Parameter-Shift Rule}: A technique to compute exact gradients of measured expectations with respect to gate parameters without resorting to numerical finite differences. For gates $e^{-i\theta H/2}$ with $H^2=I$ (which includes the rotation gates we use),
+  \begin{equation*}
+    \frac{\partial \langle M \rangle}{\partial \theta} = \tfrac{1}{2}\Big( \langle M \rangle_{\theta+\pi/2} - \langle M \rangle_{\theta-\pi/2} \Big).
+  \end{equation*}
+  This enables seamless end-to-end training of quantum layers inside deep learning frameworks.
+  \item \textbf{Input/Output vectors}: $x\in\mathbb{R}^d$ is the input vector (a list of $d$ real numbers). $z\in\mathbb{R}^p$ is an intermediate vector (often from a previous encoder). The observer also uses $c,m,s,b\in\mathbb{R}^{32}$: character, mental, state, and belief embeddings (each length 32).
+  \item \textbf{Counts and sizes}: $n_q$ = number of qubits (wires). $L$ = number of repeated variational layers. $m$ = size of the final embedding after a small MLP (usually $m=32$).
+  \item \textbf{Angles and rotations}: $R_a(\theta)$ rotates a qubit by angle $\theta$ (in radians) around axis $a\in\{x,y,z\}$.
+  \item \textbf{Vector operations}: Concatenation $[u\,\|\,v]$ means "stack vectors $u$ and $v$ end-to-end". The tensor product $u\otimes v$ combines independent systems to form a larger joint system.
+  \item \textbf{Number sets}: $\mathbb{R}$ = real numbers (ordinary decimals). $\mathbb{C}$ = complex numbers (with a real and an imaginary part).
+  \item \textbf{Notation}: Standard activations like $\tanh$ and ReLU act elementwise on vectors.
+\end{itemize}
+
+
+\section{Overview}
+
+The Enhanced Theory-of-Mind (ToM) observer fuses classical encoders with a quantum embedding to produce action logits. Two places can employ a quantum embedding: the \emph{state encoder} and the \emph{belief encoder}. In both cases the pipeline is identical:
+\begin{enumerate}
+  \item Linear projection from $\mathbb{R}^d$ to $\mathbb{R}^{n_q}$ (one scalar per qubit),
+  \item Angle-based data encoding on $n_q$ qubits,
+  \item A variational entangling circuit with trainable parameters,
+  \item Measurement of local Pauli-$Z$ observables to obtain $\mathbb{R}^{n_q}$ features,
+  \item A classical MLP mapping $\mathbb{R}^{n_q}\to \mathbb{R}^{m}$ (typically $m=32$).
+\end{enumerate}
+The resulting vector in $\mathbb{R}^{m}$ integrates with other embeddings and is fed to a classical policy head that outputs 5 logits (Up/Down/Left/Right/Stay).
+
+\section{Linear Projection to Qubit Angles}
+
+Given an input vector $x\in\mathbb{R}^{d}$ (a list of $d$ real numbers), a trainable linear map with bias produces one angle per qubit (in radians):
+\begin{equation}
+\label{eq:proj}
+\bm{\alpha}(x) \;=\; W_{\mathrm{proj}} x + \bm{b}_{\mathrm{proj}} \in \mathbb{R}^{n_q},
+\end{equation}
+with $W_{\mathrm{proj}}\in\mathbb{R}^{n_q\times d}$ (a weight matrix) and $\bm{b}_{\mathrm{proj}}\in\mathbb{R}^{n_q}$ (a bias vector). This stage is a standard dense layer trained end-to-end.
+
+\section{Angle Encoding}
+
+The angles in \eqref{eq:proj} are loaded into the circuit with single-qubit rotations. Writing $\mathcal{H}\cong(\mathbb{C}^2)^{\otimes n_q}$ for the $n_q$-qubit space and $\lvert 0\rangle^{\otimes n_q}$ for the all-zero starting state, the data-encoding unitary $U_\phi(\bm{\alpha})$ acts as
+\begin{equation}
+\label{eq:angle-embed}
+U_\phi(\bm{\alpha})\;=\;\bigotimes_{j=1}^{n_q} R_{a}\big(\alpha_j\big)\,\cdot\,\mathcal{E}_{\text{(optional)}},
+\end{equation}
+where $R_{a}(\cdot)$ denotes a single-qubit rotation about axis $a\in\{x,y,z\}$ and $\mathcal{E}_{\mathrm{fix}}$ is a \emph{fixed entangler} (defined below) that introduces correlations without adding trainable parameters. In code, a library primitive (e.g., \texttt{AngleEmbedding}) performs this step. The encoded state is
+\begin{equation}
+\label{eq:encoded-state}
+\lvert\psi_{\mathrm{enc}}(x)\rangle\;=\;U_\phi\big(\bm{\alpha}(x)\big)\,\lvert 0\rangle^{\otimes n_q}.
+
+\subsection{Fixed entanglers: definition and utility}
+
+Fixed entanglers are \emph{predefined, non-trainable} two-qubit gate networks that couple nearby qubits. Two standard choices are:
+\begin{itemize}
+  \item \textbf{CNOT ladder} (linear chain):
+  \begin{equation*}
+    \mathcal{E}_{\mathrm{fix}}^{\mathrm{CNOT\text{-}ladder}} \;=\; \prod_{j=1}^{n_q-1} \mathrm{CNOT}_{j\to j+1},\qquad
+    \mathrm{CNOT}_{i\to j} \;=\; |0\rangle\!\langle 0|_{i}\otimes I_{j} \, + \, |1\rangle\!\langle 1|_{i}\otimes X_{j}.
+  \end{equation*}
+  This flips qubit $j+1$ when qubit $j$ is $|1\rangle$, creating controllable correlations along the chain.
+  \item \textbf{CZ ring} (cyclic nearest neighbors):
+  \begin{equation*}
+    \mathcal{E}_{\mathrm{fix}}^{\mathrm{CZ\text{-}ring}} \;=\; \prod_{j=1}^{n_q} \mathrm{CZ}_{j,\,j+1\, (\mathrm{mod}\; n_q)},\qquad
+    \mathrm{CZ}_{i,j} \;=\; \mathrm{diag}(1,1,1,-1)\;\text{ on }\{|00\rangle,|01\rangle,|10\rangle,|11\rangle\}.
+  \end{equation*}
+  Equivalently, $\mathrm{CZ}_{i,j} = \tfrac{1}{2}(I\otimes I + Z\otimes I + I\otimes Z - Z\otimes Z)$.
+\end{itemize}
+These unitaries are \emph{input- and parameter-independent} and are inserted after the angle rotations. Their utility is to:
+\begin{itemize}
+  \item introduce multi-qubit dependencies so features depend on \emph{combinations} of input angles;
+  \item enlarge the set of harmonics (Fourier components) present in the embedding without deep circuits;
+  \item remain shallow and hardware-friendly (nearest-neighbor connectivity), aiding trainability and speed;
+  \item keep the encoder’s inductive bias stable across runs (no extra trainable parameters).
+\end{itemize}
+\end{equation}
+
+\section{Variational Entangling Circuit}
+
+To make the features expressive, we add a trainable circuit (an "ansatz") $U_{\bm{\theta}}$ with $L$ repeated layers (e.g., \texttt{StronglyEntanglingLayers}). Let $\bm{\theta}\in\mathbb{R}^{L\times n_q\times 3}$ be its rotation parameters; schematically,
+\begin{equation}
+\label{eq:sel}
+U_{\bm{\theta}}\;=\;\prod_{\ell=1}^{L}\Bigg[\;\Big(\prod_{j=1}^{n_q} R_z(\theta^{(\ell)}_{j,3}) R_y(\theta^{(\ell)}_{j,2}) R_x(\theta^{(\ell)}_{j,1})\Big)\;\cdot\;\mathcal{E}^{(\ell)}\;\Bigg],
+\end{equation}
+where $\mathcal{E}^{(\ell)}$ entangles the qubits (two-qubit gates that create correlations). The full encoded state after this variational block is
+\begin{equation}
+\label{eq:full-state}
+\lvert\psi(x;\bm{\theta})\rangle\;=\;U_{\bm{\theta}}\,U_\phi\big(\bm{\alpha}(x)\big)\,\lvert 0\rangle^{\otimes n_q}.
+\end{equation}
+
+\section{Measurement Features}
+
+We convert the quantum state to ordinary numbers by measuring Pauli-$Z$ on each qubit (one feature per qubit, always between $-1$ and $+1$):
+\begin{equation}
+\label{eq:meas}
+f_j(x;\bm{\theta}) \;=\; \langle\psi(x;\bm{\theta})\rvert\, Z_j\, \lvert\psi(x;\bm{\theta})\rangle \in [-1,1],\qquad j=1,\dots,n_q.
+\end{equation}
+Collecting all $n_q$ values yields $\bm{f}(x;\bm{\theta})\in\mathbb{R}^{n_q}$. In simulation, these are exact averages (expectations); on hardware they are estimated by repeating the circuit and averaging the outcomes ("shots").
+
+\section{Classical Post-Processing MLP}
+
+The measured vector is mapped to the model’s embedding size $m$ (typically $m=32$) by a small MLP:
+\begin{equation}
+\label{eq:mlp}
+\varphi(x;\bm{\theta},\Theta)\;=\;\tanh\!\Big( W_2\,\sigma\big(W_1\,\bm{f}(x;\bm{\theta})+\bm{b}_1\big)+\bm{b}_2 \Big)\;\in\;\mathbb{R}^{m},
+\end{equation}
+with $W_1\in\mathbb{R}^{64\times n_q}$, $W_2\in\mathbb{R}^{m\times 64}$, biases $\bm{b}_1,\bm{b}_2$, and activation $\sigma(\cdot)=\max\{\cdot,0\}$ (ReLU). We write $\Theta$ for all classical post-processing parameters.
+
+\section{End-to-End Mapping and Gradients}
+
+Putting \eqref{eq:proj}--\eqref{eq:mlp} together, the quantum embedding yields a differentiable map
+\begin{equation}
+\Phi_{\mathrm{Q}}: \mathbb{R}^{d}\to\mathbb{R}^{m},\qquad x\mapsto \varphi\big(x;\bm{\theta},\Theta\big).
+\end{equation}
+Training minimizes a loss $\mathcal{L}$ depending on downstream predictions. Gradients of $\mathcal{L}$ with respect to both classical and quantum parameters follow from the chain rule. For quantum gates of the form $e^{-i\tfrac{\theta}{2} H}$ with $H^2=I$, the \emph{parameter-shift rule} gives
+\begin{equation}
+\label{eq:psr}
+\frac{\partial\,\mathbb{E}[M]}{\partial\theta}\;=\;\tfrac{1}{2}\Big( \mathbb{E}[M]_{\,\theta+\tfrac{\pi}{2}} - \mathbb{E}[M]_{\,\theta-\tfrac{\pi}{2}} \Big),
+\end{equation}
+which enables exact gradients for the variational parameters $\bm{\theta}$ within automatic differentiation frameworks. The affine projection $W_{\mathrm{proj}},\bm{b}_{\mathrm{proj}}$ and the MLP weights $\Theta$ are trained via standard backpropagation.
+
+\section{Instantiation: State and Belief Encoders}
+
+\paragraph{Quantum State Encoder.} With input dimension $d_s$ and $n_q$ qubits,
+\begin{equation}
+\Phi_{\mathrm{Q}}^{\mathrm{S}}: \mathbb{R}^{d_s}\to\mathbb{R}^{m},\qquad x_s\mapsto \varphi\big(x_s;\bm{\theta}_{\mathrm{S}},\Theta_{\mathrm{S}}\big),
+\end{equation}
+produces an encoded state representation of size $m=32$.
+
+\paragraph{Quantum Belief Encoder.} Taking as input either the raw state or an intermediate representation $z\in\mathbb{R}^{p}$ (often $p=32$ from the state encoder),
+\begin{equation}
+\Phi_{\mathrm{Q}}^{\mathrm{B}}: \mathbb{R}^{p}\to\mathbb{R}^{m},\qquad z\mapsto \varphi\big(z;\bm{\theta}_{\mathrm{B}},\Theta_{\mathrm{B}}\big),
+\end{equation}
+produces a belief embedding of size $m=32$.
+
+\section{Fusion and Policy Head}
+
+Let $c,m\in\mathbb{R}^{32}$ denote the outputs of the character and mental encoders, respectively, and let $s,b\in\mathbb{R}^{32}$ be the quantum (or classical/hybrid) state and belief embeddings. The fused feature is
+\begin{equation}
+\label{eq:fuse}
+\bm{h}\;=\;[c\,\|\,m\,\|\,s\,\|\,b]\;\in\;\mathbb{R}^{128},
+\end{equation}
+followed by a classical head $\mathbb{R}^{128}\to\mathbb{R}^{5}$ producing 5 action logits corresponding to Up/Down/Left/Right/Stay.
+
+\section{Remarks on Hybrid Variants}
+
+Hybrid encoders concatenate a classical branch and a quantum branch (each producing $m/2$ features) followed by a small fusion MLP. The quantum branch is exactly as described above; the classical branch is a shallow MLP. The fused output dimension remains $m=32$ for compatibility with downstream modules.
+
+\end{document}
+
+

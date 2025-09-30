@@ -1,0 +1,31 @@
+graph TD
+  %% Hybrid embedding: classical branch + quantum branch + fusion
+  h0["Classical input x ∈ R^{input_dim}"]
+
+  %% Classical branch
+  h0 --> c1["Classical encoder MLP: input_dim → 32 (ReLU, Dropout) → output_dim/2 (Tanh)"]
+  c1 --> h_class["h_class ∈ R^{output_dim/2}"]
+
+  %% Quantum branch
+  h0 --> qlin["Linear projection: R^{input_dim} → R^{n_qubits}"]
+  qlin --> hae["AngleEmbedding(inputs) on wires 0..n_qubits-1"]
+
+  subgraph HVQC["Variational quantum circuit"]
+    direction LR
+    hae --> hsel["StronglyEntanglingLayers (L layers)"]
+    hw["Trainable weights: (L, n_qubits, 3)"]
+    hsel --- hw
+  end
+
+  hsel --> hmeas["Measure expectations ⟨Z_i⟩ for i = 0..n_qubits-1"]
+  hmeas --> hz["z ∈ R^{n_qubits}"]
+  hz --> hmlp["Quantum post-MLP: n_qubits → 32 (ReLU) → output_dim/2 (Tanh)"]
+  hmlp --> h_quant["h_quant ∈ R^{output_dim/2}"]
+
+  %% Fusion
+  h_class --> cat
+  h_quant --> cat
+  cat["Concatenate [h_class || h_quant] ∈ R^{output_dim}"] --> ff["Fusion MLP: output_dim → output_dim (ReLU) → output_dim"]
+  ff --> hout["Hybrid embedding z_h ∈ R^{output_dim}"]
+
+

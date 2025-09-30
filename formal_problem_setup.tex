@@ -1,6 +1,7 @@
 \documentclass[11pt]{article}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{geometry}
+\usepackage{svg}
 \geometry{margin=1in}
 
 \title{Formal Problem Setup: Quantum vs Classical Belief State Representations in POMDPs for Theory of Mind}
@@ -10,6 +11,14 @@
 \begin{document}
 \maketitle
 
+\section{Introduction: Machine Theory of Mind}
+
+Machine Theory of Mind in this project means equipping a controllable character (the acting agent) to infer hidden facts when it can only see part of the world at any time. The environment is a small gridworld composed of cells with walls, empty spaces, objects, and a subgoal; each episode is a full run from reset to termination. Because observations are local and incomplete, the agent cannot directly access the true world state and must maintain a running hypothesis about what is currently true.
+
+Decision making is organized around several named components. The \emph{agent} controls the character and selects actions to maximize expected reward. The \emph{observer} (Theory-of-Mind observer) consumes the stream of observations and past actions to form a \emph{belief state}, which we represent as a compact \emph{belief embedding} — a vector summarizing what the agent currently thinks about relevant hidden variables (for example, object locations or task-relevant events such as swaps that may occur outside the field of view). The \emph{policy} maps the current information (observation and belief embedding) to an action distribution; we train the policy with reinforcement learning, e.g., \(Q\)-learning. During training and evaluation the system produces \emph{rollouts}, which are trajectories of observations, actions, and rewards used both to fit models and to measure performance.
+
+A central design choice is how the belief embedding is computed. We study three encoder families: (i) a \emph{classical encoder} based on standard neural networks, (ii) a \emph{quantum-inspired encoder} that applies circuit-style feature transformations before a small post-processing network, and (iii) a \emph{hybrid encoder} that fuses features from both the classical and quantum-inspired pathways. These alternatives provide different inductive biases for representing uncertainty and relational structure. By swapping encoders while keeping the rest of the setup fixed, we assess how belief representations affect inference quality and action selection, how performance scales with model capacity, and how fairly parameter-matched models compare.
+
 \section{Problem Definition}
 
 We consider a Partially Observable Markov Decision Process (POMDP) framework for evaluating Theory of Mind (ToM) capabilities through belief state representations. The problem involves comparing classical, quantum, and hybrid approaches to belief state modeling in scenarios with inherent uncertainty and partial observability.
@@ -17,6 +26,56 @@ We consider a Partially Observable Markov Decision Process (POMDP) framework for
 Theory of Mind (ToM) refers to the cognitive ability to attribute mental states—beliefs, intentions, desires, and knowledge—to oneself and others. This capability is fundamental to human social intelligence and is increasingly recognized as crucial for developing socially-aware artificial intelligence systems. The challenge lies in creating computational models that can reason about the mental states of agents operating in partially observable environments, where information is incomplete and beliefs may diverge from reality.
 
 The core innovation of this work is the application of quantum computational principles to belief state representation in POMDPs. While classical neural networks have shown promise in ToM tasks, they often struggle with representing and reasoning about uncertainty in a coherent manner. Quantum computing offers natural advantages for uncertainty representation through superposition, entanglement, and quantum interference, making it particularly well-suited for modeling the inherent uncertainty in Theory of Mind scenarios.
+
+\section{POMDP Formalism}
+
+We use a finite-horizon partially observable Markov decision process (POMDP)
+\(\mathcal{M} = (\mathcal{S}, \mathcal{A}, \mathcal{O}, T, O, R, \gamma, \rho_0)\), where
+\begin{itemize}
+  \item \textbf{States} \(\mathcal{S}\): latent world configurations.
+  \item \textbf{Actions} \(\mathcal{A}\): agent controls.
+  \item \textbf{Observations} \(\mathcal{O}\): sensor outputs.
+  \item \textbf{Transition} \(T(s'\mid s,a)\): dynamics kernel.
+  \item \textbf{Observation} \(O(o\mid s')\): sensor model.
+  \item \textbf{Reward} \(R(s,a,s')\): task-dependent scalar signal.
+  \item \textbf{Discount} \(\gamma\in[0,1]\), \textbf{initial} \(\rho_0\in\Delta(\mathcal{S})\).
+\end{itemize}
+
+For history \(h_t=(o_0,a_0,\ldots,o_t)\), the Bayesian belief state \(b_t\in\Delta(\mathcal{S})\) evolves via
+\begin{align}
+  b_{t+1}(s') &\propto O(o_{t+1}\mid s')\sum_{s\in\mathcal{S}} T(s'\mid s,a_t)\, b_t(s),\quad b_0=\rho_0,
+\end{align}
+inducing a fully observed MDP on the belief simplex.
+
+\section{Mapping to the Gridworld POMDP}
+
+The gridworld implementation (\texttt{src/environment/gridworld.py}) instantiates the components above as follows.
+
+\subsection{State, Action, Observation}
+\begin{itemize}
+  \item \textbf{Actions} \(\mathcal{A}=\{\textsc{Up},\textsc{Down},\textsc{Left},\textsc{Right},\textsc{Stay}\}\) (integers \(0..4\)).
+  \item \textbf{States} \(\mathcal{S}\): tuples specifying the fixed wall layout for the episode (outer border closed, interior walls sampled with probability \(p_{\text{wall}}\)), agent position, a subgoal cell, four objects with kinds \(0..3\) and positions, and a \texttt{swapped} flag with last-swap step index.
+  \item \textbf{Observations} \(\mathcal{O}\): the actor perceives an egocentric crop of size \(\text{fov}\times\text{fov}\) with 6 channels (walls/pad, subgoal, four object masks). In the default setting \(\text{fov}=3\), yielding a tensor of shape \((6,3,3)\). Observations are deterministic given the state.
+\end{itemize}
+
+\subsection{Dynamics and Sensing}
+\begin{itemize}
+  \item \textbf{Transition} \(T\): deterministic grid moves with collision (invalid moves leave position unchanged). Upon first visiting the subgoal, a one-time stochastic \emph{swap} occurs with probability \(p_{\text{swap}}\), implemented as a cyclic permutation of object positions; this event can be outside the FOV and thus unobserved by the actor. Episodes terminate at a fixed horizon \(T_{\max}\).
+  \item \textbf{Observation} \(O\): deterministic, \(O(o\mid s)=\mathbf{1}[o=\phi(s)]\), where \(\phi\) renders the egocentric crop and binary masks.
+\end{itemize}
+
+\subsection{Reward, Discount, Initial}
+\begin{itemize}
+  \item Rewards are task-dependent and used only for the Q-learning baseline (\texttt{src/agents/qlearn\_agent.py}): step cost \(-0.01\), \(+0.2\) if closer (Manhattan) to the preferred object, and \(+1.0\) when on the preferred object; typical \(\gamma=0.95\).
+  \item The rule-based belief agent (\texttt{src/agents/belief\_agent.py}) is reward-agnostic and greedily pursues a preferred object based on persistent beliefs updated only within FOV.
+  \item \(\rho_0\) samples walls and all positions uniformly over free cells at reset (seeded RNG).
+\end{itemize}
+
+\subsection{Beliefs, False Beliefs, and Supervision}
+Hidden swaps induce divergence between the actor's internal beliefs and the true state. The data pipeline (\texttt{src/data/rollout\_dataset.py}) records a boolean \texttt{swap\_hidden} indicating that the most recent swap occurred outside FOV (and within a short window thereafter). Evaluation is partitioned into false-belief vs. visible regimes accordingly.
+
+\subsection{Observer Inputs and Encoders}
+The ToM observer (\texttt{src/models/enhanced\_tom\_observer.py}) predicts the next action given character summaries, recent ``mental'' context, and a state input that is either the observer's compact 17-D full-state features or the actor's flattened partial observation (when enabled). These pass through configurable classical/quantum/hybrid encoders before the policy head. While the observer may consume full-state features for supervision, the \emph{control problem} faced by the actor is exactly the POMDP defined above.
 
 \section{Environment Specification}
 
@@ -59,6 +118,13 @@ Using variational quantum circuits with $n$ qubits:
 where $\mathcal{E}: \mathbb{R}^{17} \rightarrow \mathbb{C}^{2^n}$ is angle embedding, $\mathcal{U}_{\theta}$ is a parameterized quantum circuit with StronglyEntanglingLayers, and PostProcess maps quantum measurements to belief space.
 
 The quantum approach leverages variational quantum circuits implemented through PennyLane, using $n=8$ qubits in our experiments. The angle embedding maps classical state features to quantum rotation angles, creating a quantum superposition that can represent multiple possible states simultaneously. The StronglyEntanglingLayers introduce quantum entanglement between qubits, allowing the model to maintain correlations between different aspects of the belief state. The quantum circuit is followed by a classical post-processing network that maps quantum measurements to the belief space. This architecture naturally handles uncertainty through quantum superposition, where the quantum state can represent a weighted combination of multiple possible belief configurations, making it particularly well-suited for scenarios with incomplete information.
+
+\begin{figure}[t]
+\centering
+\includesvg[width=0.9\linewidth]{diagrams/quantum_embedding}
+\caption{Quantum embedding pipeline used in our implementation: linear projection to $n$ qubits, AngleEmbedding, StronglyEntanglingLayers ($L$), Pauli-$Z$ expectations, and classical MLP readout.}
+\label{fig:quantum-embedding}
+\end{figure}
 
 \subsection{Quantum Embedding Details}
 
@@ -117,6 +183,13 @@ Combines classical and quantum components:
 
 The hybrid approach seeks to combine the computational efficiency of classical networks with the uncertainty representation capabilities of quantum circuits. This architecture processes the same input through both classical and quantum pathways in parallel, then fuses the resulting representations through a learned fusion layer. The fusion layer is implemented as a neural network that learns to optimally combine the classical and quantum belief representations. This approach allows the model to leverage the strengths of both paradigms: the deterministic, well-understood behavior of classical networks for straightforward cases, and the quantum advantage for scenarios requiring sophisticated uncertainty reasoning. The hybrid architecture is particularly valuable in practice, as it provides a bridge between classical and quantum approaches while maintaining reasonable computational requirements.
 
+\begin{figure}[t]
+\centering
+\includesvg[width=0.9\linewidth]{diagrams/hybrid_embedding}
+\caption{Hybrid embedding pipeline: classical MLP branch and quantum branch (projection, AngleEmbedding, StronglyEntanglingLayers, Pauli-$Z$ expectations, post-MLP) are concatenated and fused by a small MLP.}
+\label{fig:hybrid-embedding}
+\end{figure}
+
 \section{Theory of Mind Observer}
 
 The ToM observer predicts agent actions based on:
@@ -154,6 +227,20 @@ The mental state encoding $\mathbf{m} \in \mathbb{R}^{32}$ captures the agent's 
 \end{itemize}
 
 The mental state encoding is particularly important for Theory of Mind reasoning because it captures the dynamic, situation-specific aspects of cognition that influence decision-making. While character encoding provides stable behavioral patterns, mental state encoding captures the immediate context that might cause an agent to deviate from their typical behavior. For instance, even a normally cautious agent might take risks when under time pressure or when pursuing a highly valued goal.
+
+\subsection{Belief State Encoding: World Model and Uncertainty Representation}
+
+The belief state encoding $\mathbf{b}_t$ summarizes the agent's current world model under partial observability. It aggregates hypotheses over hidden variables (e.g., occluded object positions, swap status) and quantifies uncertainty that arises from limited field-of-view and stochastic events. The encoding is produced by a dedicated belief module (classical, quantum, or hybrid) that consumes the encoded state and outputs a compact representation used by the policy head.
+
+\begin{itemize}
+    \item \textbf{World model hypotheses}: Latent estimates of object locations, swap state, and relevant scene attributes outside the field of view
+    \item \textbf{Uncertainty and confidence}: Degree of ambiguity about hypotheses; for quantum variants, superposition and entanglement provide structured uncertainty and correlations
+    \item \textbf{Relational dependencies}: Correlations between objects, walls, and goals that inform joint hypotheses rather than independent guesses
+    \item \textbf{Temporal persistence}: Continuity of beliefs when no new evidence arrives; graceful update when informative observations become available
+    \item \textbf{Counterfactual expectations}: Anticipated observations if a hypothesis were true, guiding information-seeking behavior and disambiguation
+\end{itemize}
+
+This encoding is pivotal in false-belief regimes, where the internal world model can diverge from ground truth due to unobserved swaps. The observer must predict actions consistent with $\mathbf{b}_t$, not with the true state. Quantum and hybrid belief modules introduce inductive biases (bounded measurement features, kernel geometry, shallow entanglers) that promote expressive yet trainable uncertainty representations in these settings.
 
 \subsection{Integration of Multiple Mental Representations}
 

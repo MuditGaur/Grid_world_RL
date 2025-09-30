@@ -1,0 +1,10 @@
+﻿graph TB
+  xs["Classical state x_s"] --> US["U^S_φ(x_s)"] --> psiS["|ψ_S(x_s)"] --> measS["measure {M^S_j}"] --> hS["h_S(x_s)"]
+  xs --> z1["z = x_s"]
+  hS --> z2["z = h_S(x_s)"]
+  z1 --> UB
+  z2 --> UB
+  UB["U^B_φ(z)"] --> psiB["|ψ_B(z)"] --> measB["measure {M^B_ℓ}"] --> b["b(z)"]
+  hS --> comb
+  b --> comb
+  comb["Concatenate: [h_S(x_s) || b(z)]"] --> head["Classical policy/value head"]
