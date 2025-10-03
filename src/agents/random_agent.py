@@ -16,20 +16,6 @@ from ..environment import Gridworld, STAY
 
 
 class RandomAgent:
-    """Agent that samples actions from a Dirichlet distribution.
-
-    Parameters
-    ----------
-    alpha : float | Sequence[float]
-        Dirichlet concentration(s). If float, uses symmetric [alpha]*5.
-    alpha_fn : Optional[Callable[[Gridworld], Sequence[float]]]
-        Optional callable returning per-action concentration given the env.
-        If provided, this overrides `alpha` each step.
-    prefer_stay_bias : float
-        Added to the STAY action's concentration to control idleness tendency.
-    rng : Optional[np.random.Generator]
-        Random generator for reproducibility.
-    """
 
     def __init__(self,
                  alpha: float | Sequence[float] = 1.0,
