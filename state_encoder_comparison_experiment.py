@@ -118,7 +118,7 @@ def run_state_encoder_comparison(train_loader, val_loader, n_qubits: int = 8,
     Loops over state types and aggregates result dicts from
     `run_state_encoder_experiment`.
     """
-    state_types = ["classical", "quantum", "hybrid"]
+    state_types = ["classical", "quantum", "hybrid", "vae"]
     results: List[Dict] = []
     for state_type in state_types:
         try:

@@ -62,7 +62,7 @@ def build_rollouts(num_agents: int, episodes_per_agent: int, k_context: int,
                    qlearn_iters=10000, max_steps=80, seed=1234,
                    p_swap: float = 0.25, swap_window: int = 10,
                    force_swap: bool = False, force_swap_at_step: int | None = None,
-                   use_agent_obs_as_state: bool = False) -> Tuple[List, List]:
+                   use_agent_obs_as_state: bool = True) -> Tuple[List, List]:
     rng = random.Random(seed)
     env = Gridworld(n=grid, fov=fov, p_wall=0.10, p_swap=p_swap, max_steps=max_steps, rng=rng)
 

@@ -1,14 +1,12 @@
 """
 Enhanced Theory of Mind observer models allowing independent variation of
-state encoders and belief-state encoders.
+state encoders.
 
-- State encoders: Classical | Quantum | Hybrid
-- Belief states:  Classical | Quantum | Hybrid
+- State encoders: Classical | Quantum | Hybrid | VAE
 
-This module is used by experiments that compare (a) belief-state types and
-(b) state-encoder types in isolation. The `EnhancedToMObserver` fuses character,
-mental, encoded_state, and belief into a policy head that predicts the next
-action.
+This module is used by experiments that compare state-encoder types in isolation.
+The `EnhancedToMObserver` fuses character, mental, and encoded_state into a
+policy head that predicts the next action.
 """
 
 import torch
@@ -38,6 +36,48 @@ class ClassicalStateEncoder(nn.Module):
     
     def forward(self, x):
         return self.encoder(x)
+
+class VAEStateEncoder(nn.Module):
+    """Variational Autoencoder-based state encoder with parameter count matched
+    to quantum/hybrid encoders.
+
+    Encodes input to a latent vector via reparameterization and returns the
+    latent mean as the state representation. A tiny decoder is included to keep
+    overall parameterization comparable, but its output is not used by the
+    observer forward.
+    """
+    def __init__(self, input_dim: int = 17, output_dim: int = 32,
+                 hidden_dim: int = 24, decoder_hidden_dim: int = 16):
+        super().__init__()
+        # Encoder to mean and logvar (single compact hidden layer)
+        self.enc_fc1 = nn.Linear(input_dim, hidden_dim)
+        self.enc_mu = nn.Linear(hidden_dim, output_dim)
+        self.enc_logvar = nn.Linear(hidden_dim, output_dim)
+        # Tiny decoder to roughly match parameter count to quantum/hybrid
+        self.dec_fc1 = nn.Linear(output_dim, decoder_hidden_dim)
+        self.dec_out = nn.Linear(decoder_hidden_dim, input_dim)
+
+    def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+        std = (0.5 * logvar).exp()
+        eps = torch.randn_like(std)
+        return mu + eps * std
+
+    def encode(self, x: torch.Tensor):
+        h = F.relu(self.enc_fc1(x))
+        mu = torch.tanh(self.enc_mu(h))
+        logvar = self.enc_logvar(h)
+        return mu, logvar
+
+    def decode(self, z: torch.Tensor):
+        h = F.relu(self.dec_fc1(z))
+        recon = self.dec_out(h)
+        return recon
+
+    def forward(self, x):
+        mu, logvar = self.encode(x)
+        # Use mean as deterministic representation during inference/training for fairness
+        z = mu
+        return z
 
 class QuantumStateEncoder(nn.Module):
     """Quantum state encoder using variational quantum circuits."""
@@ -154,126 +194,7 @@ class HybridStateEncoder(nn.Module):
         combined = torch.cat([classical_output, quantum_output], dim=-1)
         return self.fusion_layer(combined)
 
-class ClassicalBeliefState(nn.Module):
-    """Classical belief state representation."""
-    
-    def __init__(self, input_dim: int = 32, belief_dim: int = 32):
-        super().__init__()
-        self.belief_encoder = nn.Sequential(
-            nn.Linear(input_dim, 64),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(64, belief_dim),
-            nn.Tanh()
-        )
-    
-    def forward(self, x):
-        return self.belief_encoder(x)
-
-class QuantumBeliefState(nn.Module):
-    """Quantum belief state representation."""
-    
-    def __init__(self, input_dim: int = 32, belief_dim: int = 32, n_qubits: int = 8, n_layers: int = 2):
-        super().__init__()
-        assert _HAS_PENNYLANE, "Quantum belief state requires pennylane to be installed."
-        
-        self.input_dim = input_dim
-        self.belief_dim = belief_dim
-        self.n_qubits = n_qubits
-        self.n_layers = n_layers
-        
-        # Project input to qubit count
-        self.input_projection = nn.Linear(input_dim, n_qubits)
-        
-        # Build quantum circuit
-        dev = qml.device("default.qubit", wires=n_qubits)
-        
-        @qml.qnode(dev, interface="torch")
-        def quantum_belief_circuit(inputs, weights):
-            qml.AngleEmbedding(inputs, wires=range(n_qubits))
-            qml.StronglyEntanglingLayers(weights, wires=range(n_qubits))
-            return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
-        
-        weight_shapes = {"weights": (n_layers, n_qubits, 3)}
-        self.quantum_layer = qml.qnn.TorchLayer(quantum_belief_circuit, weight_shapes)
-        
-        # Post-processing
-        self.post_process = nn.Sequential(
-            nn.Linear(n_qubits, 64),
-            nn.ReLU(),
-            nn.Linear(64, belief_dim),
-            nn.Tanh()
-        )
-    
-    def forward(self, x):
-        projected_input = self.input_projection(x)
-        quantum_output = self.quantum_layer(projected_input)
-        return self.post_process(quantum_output)
-
-class HybridBeliefState(nn.Module):
-    """Hybrid belief state representation."""
-    
-    def __init__(self, input_dim: int = 32, belief_dim: int = 32, n_qubits: int = 6, n_layers: int = 2):
-        super().__init__()
-        assert _HAS_PENNYLANE, "Hybrid belief state requires pennylane to be installed."
-        
-        self.input_dim = input_dim
-        self.belief_dim = belief_dim
-        self.n_qubits = n_qubits
-        self.n_layers = n_layers
-        
-        # Classical component
-        self.classical_belief = nn.Sequential(
-            nn.Linear(input_dim, 32),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(32, belief_dim // 2),
-            nn.Tanh()
-        )
-        
-        # Quantum component
-        self.input_projection = nn.Linear(input_dim, n_qubits)
-        
-        # Build quantum circuit
-        dev = qml.device("default.qubit", wires=n_qubits)
-        
-        @qml.qnode(dev, interface="torch")
-        def quantum_belief_circuit(inputs, weights):
-            qml.AngleEmbedding(inputs, wires=range(n_qubits))
-            qml.StronglyEntanglingLayers(weights, wires=range(n_qubits))
-            return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
-        
-        weight_shapes = {"weights": (n_layers, n_qubits, 3)}
-        self.quantum_layer = qml.qnn.TorchLayer(quantum_belief_circuit, weight_shapes)
-        
-        # Quantum post-processing
-        self.quantum_post_process = nn.Sequential(
-            nn.Linear(n_qubits, 32),
-            nn.ReLU(),
-            nn.Linear(32, belief_dim // 2),
-            nn.Tanh()
-        )
-        
-        # Fusion layer
-        self.fusion_layer = nn.Sequential(
-            nn.Linear(belief_dim, belief_dim),
-            nn.ReLU(),
-            nn.Linear(belief_dim, belief_dim),
-            nn.Tanh()
-        )
-    
-    def forward(self, x):
-        # Classical belief
-        classical_belief = self.classical_belief(x)
-        
-        # Quantum belief
-        projected_input = self.input_projection(x)
-        quantum_output = self.quantum_layer(projected_input)
-        quantum_belief = self.quantum_post_process(quantum_output)
-        
-        # Fuse beliefs
-        combined = torch.cat([classical_belief, quantum_belief], dim=-1)
-        return self.fusion_layer(combined)
+## Belief-state modules removed
 
 class EnhancedToMObserver(nn.Module):
     """
@@ -287,38 +208,36 @@ class EnhancedToMObserver(nn.Module):
 
     Configuration
     -------------
-    - state_type:  'classical' | 'quantum' | 'hybrid'
-    - belief_type: 'classical' | 'quantum' | 'hybrid'
+    - state_type:  'classical' | 'quantum' | 'hybrid' | 'vae'
     - n_qubits:    qubits used by quantum/hybrid modules
 
     Flow
     ----
-    state --(state_encoder)--> encoded_state --(belief_state)--> belief
-    [char, mental, encoded_state, belief] --concat--> policy head --> logits
+    state --(state_encoder)--> encoded_state
+    [char, mental, encoded_state] --concat--> policy head --> logits
     """
     
     def __init__(self, char_dim: int = 22, mental_dim: int = 17, state_dim: int = 17,
-                 state_type: str = "classical", belief_type: str = "classical", 
+                 state_type: str = "classical", belief_type: str = "classical",
                  n_qubits: int = 8, device: str = "cpu"):
         super().__init__()
         
-        assert state_type in {"classical", "quantum", "hybrid"}
-        assert belief_type in {"classical", "quantum", "hybrid"}
+        assert state_type in {"classical", "quantum", "hybrid", "vae"}
         
         self.state_type = state_type
-        self.belief_type = belief_type
+        # belief_type accepted for backward-compatibility; ignored
         self.device = device
         
         # Character encoder
         self.char_enc = nn.Sequential(
-            nn.Linear(char_dim, 64), nn.ReLU(),
-            nn.Linear(64, 32), nn.ReLU(),
+            nn.Linear(char_dim, char_dim), nn.ReLU(),
+            nn.Linear(char_dim, char_dim), nn.ReLU(),
         )
         
         # Mental encoder
         self.mental_enc = nn.Sequential(
-            nn.Linear(mental_dim, 64), nn.ReLU(),
-            nn.Linear(64, 32), nn.ReLU(),
+            nn.Linear(mental_dim, mental_dim), nn.ReLU(),
+            nn.Linear(mental_dim, mental_dim), nn.ReLU(),
         )
         
         # State encoder
@@ -326,19 +245,14 @@ class EnhancedToMObserver(nn.Module):
             self.state_encoder = ClassicalStateEncoder(state_dim, 32)
         elif state_type == "quantum":
             self.state_encoder = QuantumStateEncoder(state_dim, 32, n_qubits)
-        else:  # hybrid
+        elif state_type == "hybrid":
             self.state_encoder = HybridStateEncoder(state_dim, 32, n_qubits // 2)
+        else:  # vae
+            # Use compact VAE to roughly match quantum/hybrid parameter counts
+            self.state_encoder = VAEStateEncoder(state_dim, 32, hidden_dim=24, decoder_hidden_dim=16)
         
-        # Belief state
-        if belief_type == "classical":
-            self.belief_state = ClassicalBeliefState(32, 32)
-        elif belief_type == "quantum":
-            self.belief_state = QuantumBeliefState(32, 32, n_qubits)
-        else:  # hybrid
-            self.belief_state = HybridBeliefState(32, 32, n_qubits // 2)
-        
-        # Policy head: combines character, mental state, encoded state, and belief state
-        fused_dim = 32 + 32 + 32 + 32  # char + mental + encoded_state + belief
+        # Policy head: combines character, mental state, and encoded state
+        fused_dim = char_dim + mental_dim + 32  # char + mental + encoded_state
         self.head = nn.Sequential(
             nn.Linear(fused_dim, 128), nn.ReLU(),
             nn.Linear(128, 64), nn.ReLU(),
@@ -350,12 +264,11 @@ class EnhancedToMObserver(nn.Module):
         c = self.char_enc(char)
         m = self.mental_enc(mental)
 
-        # Encode current state, then derive belief from the encoded state
+        # Encode current state
         encoded_state = self.state_encoder(state)
-        belief = self.belief_state(encoded_state)
 
         # Fuse and predict next action logits
-        x = torch.cat([c, m, encoded_state, belief], dim=-1)
+        x = torch.cat([c, m, encoded_state], dim=-1)
         logits = self.head(x)
         return logits
     
@@ -364,10 +277,9 @@ class EnhancedToMObserver(nn.Module):
         return self.state_encoder(state)
     
     def get_belief_representation(self, state):
-        """Return belief representation given raw state (encodes state first)."""
-        encoded_state = self.state_encoder(state)
-        return self.belief_state(encoded_state)
+        """Deprecated: returns the state encoder embedding for compatibility."""
+        return self.state_encoder(state)
 
-def create_enhanced_tom_observer(state_type: str, belief_type: str, **kwargs):
+def create_enhanced_tom_observer(state_type: str, belief_type: str = "classical", **kwargs):
     """Factory function to create enhanced ToM observers."""
     return EnhancedToMObserver(state_type=state_type, belief_type=belief_type, **kwargs)
